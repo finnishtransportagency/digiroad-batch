@@ -24,8 +24,7 @@ export class BatchMainStack extends Stack {
     const vpcSubnets = vpc.selectSubnets({
       subnetType: SubnetType.PRIVATE_WITH_EGRESS
     });
-    
-
+    // tähän erilaisia ajastuksia ja muuta räätälöintiä tukemaan ajastusta
     const eventRule = new Rule(this, 'mondayIntegrationRoutine', {
       schedule: Schedule.cron({ weekDay: 'MON', hour: '5', minute: '0' }),
     });
