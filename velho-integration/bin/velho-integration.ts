@@ -4,6 +4,10 @@ import * as cdk from 'aws-cdk-lib';
 import { VelhoIntegrationStack } from '../lib/velho-integration-stack';
 
 const app = new cdk.App();
+
+const account = app.node.tryGetContext('account') || process.env.CDK_DEFAULT_ACCOUNT;
+const region = app.node.tryGetContext('region') || process.env.CDK_DEFAULT_REGION;
+
 new VelhoIntegrationStack(app, 'VelhoIntegrationStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
@@ -11,7 +15,7 @@ new VelhoIntegrationStack(app, 'VelhoIntegrationStack', {
 
   /* Uncomment the next line to specialize this stack for the AWS Account
    * and Region that are implied by the current CLI configuration. */
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+  env: { account, region },
 
   /* Uncomment the next line if you know exactly what Account and Region you
    * want to deploy the stack to. */
