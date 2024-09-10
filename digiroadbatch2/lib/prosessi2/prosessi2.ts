@@ -6,7 +6,7 @@ import {StringParameter} from "aws-cdk-lib/aws-ssm";
 import {Parallel, StateMachine, TaskInput} from "aws-cdk-lib/aws-stepfunctions";
 import {LambdaInvoke} from "aws-cdk-lib/aws-stepfunctions-tasks";
 import {LogGroup, RetentionDays} from "aws-cdk-lib/aws-logs";
-// tää voi olla oma stask tai vaan metodi, oma stack varmaan joustavinta jos homma kasvaa
+// tää voi olla oma task tai vaan metodi, oma stack varmaan joustavinta jos homma kasvaa
 export function velhoIntegraiont(context: Stack,vpc: IVpc, vpcSubnets: SelectedSubnets, ENV: string) {
     const fetchAndProcess = new NodejsFunction(context, 'FetchAndProcess', {
         vpc,

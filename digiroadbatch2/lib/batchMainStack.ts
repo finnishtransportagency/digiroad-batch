@@ -12,7 +12,7 @@ import { Construct } from "constructs";
 import {velhoIntegraiont} from "./velhoIntegration/velhoComponent";
 
 
-
+// varmaan alkuun normi stack mutta myöhemmim ehkä NestedStack
 export class BatchMainStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
