@@ -28,6 +28,7 @@ export class BatchMainStack extends Stack {
     const eventRule = new Rule(this, 'mondayIntegrationRoutine', {
       schedule: Schedule.cron({ weekDay: 'MON', hour: '5', minute: '0' }),
     });
+    
     eventRule.addTarget(new SfnStateMachine(velhoIntegraiont(this, vpc, vpcSubnets, ENV)));
   }
 }
