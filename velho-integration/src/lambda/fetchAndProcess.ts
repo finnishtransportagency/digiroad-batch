@@ -12,12 +12,10 @@ setGlobalDispatcher(agent)
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION });
 
-
-
 const getClient = async (): Promise<Client> => {
     const config:ClientConfig = { 
       user: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.username` }))).Parameter?.Value,
-      host: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.host` }))).Parameter?.Value,
+      host: 'velhotestdb.c8sq5c8rj3gu.eu-west-1.rds.amazonaws.com', //(await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.host` }))).Parameter?.Value,
       database: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.databasename` }))).Parameter?.Value,
       password: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.password`, WithDecryption: true }))).Parameter?.Value,
       port: 5432,
@@ -73,7 +71,6 @@ const listKohdeluokka = async (token:string, target:string):Promise<{ [key:strin
 }
 
 const fetchSourceData = async (token:string, path:string) => {
-    console.log(path, token)
     try {
     const response = await fetch(`https://apiv2prdvelho.vaylapilvi.fi/latauspalvelu/api/v1/${path}`, {
         method: 'GET',
@@ -81,7 +78,6 @@ const fetchSourceData = async (token:string, path:string) => {
             'Authorization': 'Bearer '+token,
         },
     });
-    console.log(response)
 
     if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -94,10 +90,11 @@ const fetchSourceData = async (token:string, path:string) => {
         .map((line:string) => JSON.parse(line))
 } catch (err) {
     console.log(err)
+    return null
 }
 }
 
-interface PointAsset {
+export interface PointAsset {
     sijainti: {
       osa: number,
       tie: number,
@@ -115,30 +112,35 @@ interface PointAsset {
     },
     oid: string,
     luotu: string,
-    muokattu: string
+    muokattu: string,
+    'tiekohteen-tila': string | null
 }
 
-interface PointAssetWithLinkId extends PointAsset {
-    link_id?: string
+interface EnrichedPointAsset extends PointAsset {
+    linkId?: string
+    mValue?: number
+    municipalityCode?: number
 }
 
-interface DbAsset {
-    externalId: string,
+export interface DbAsset {
+    externalId: string | null,
     createdBy: string,
     createdDate: Date,
     modifiedBy: string | null,
     modifiedDate: Date | null,
     linkid: string,
-    startMeasure: number,
-    endMeasure: number,
+    startMeasure: number | null,
+    endMeasure: number | null,
     municipalitycode: number
 }
 
 interface VKMResponse {
     features: {
         properties: {
-            tunniste: string;
-            link_id: string;
+            tunniste: string,
+            link_id: string,
+            m_arvo: number,
+            kuntakoodi: number
         };
     }[];
 }
@@ -148,10 +150,29 @@ const convertEly = (velhoEly: string): number => {
     return velhoElyToDigiroad[velhoEly]
 }
 
+const fetchMunicipalities = async (digiroadEly: number): Promise<number[]> => {
+    const client = await getClient()
+    try {
+        await client.connect()
+        const sql = `select id from municipality where ely_nro = ${digiroadEly};`
+        const query = {
+            text: sql,
+            rowMode: 'array',
+        }
+        const result = await client.query(query)
+        return result.rows.map((row: [number]) => row[0])
+    } catch (err){
+        console.log('err',err)      
+    } finally {
+        await client.end()
+    }
+    throw '500: something weird happened'
+} 
+
 const fetchDestData = async (velhoEly: string) => {
     const typeId = 200
     const digiroadEly = convertEly(velhoEly)
-    const municipalities = [683, 698, 742, 751, 241, 583, 732, 845, 851, 890, 976, 758, 148, 498, 47, 240, 320, 261, 273, 854, 614]
+    const municipalities = await fetchMunicipalities(digiroadEly)
     const client = await getClient()
     try {
         await client.connect()
@@ -170,7 +191,6 @@ const fetchDestData = async (velhoEly: string) => {
             and kgv.adminclass = 1
             and kgv.municipalitycode in (${municipalities.join(',')})
         ;`
-        console.log(sql)
         const query = {
             text: sql,
             rowMode: 'array',
@@ -179,14 +199,14 @@ const fetchDestData = async (velhoEly: string) => {
 
         const assets: DbAsset[] = result.rows.map((row: any) => ({
             externalId: row[0] !== null ? row[0] : null,
-            createdBy: row[1] !== null ? row[1] : null,
-            createdDate: row[2] !== null ? new Date(row[2]) : null,
+            createdBy: row[1],
+            createdDate: new Date(row[2]),
             modifiedBy: row[3] !== null ? row[3] : null,
             modifiedDate: row[4] !== null ? new Date(row[4]) : null,
-            linkid: row[5] !== null ? row[5] : null,
+            linkid: row[5],
             startMeasure: row[6] !== null ? row[6] : null,
             endMeasure: row[7] !== null ? row[7] : null,
-            municipalitycode: row[8] !== null ? row[8] : null,
+            municipalitycode: row[8],
         }));
         
 
@@ -194,32 +214,85 @@ const fetchDestData = async (velhoEly: string) => {
     } catch (err){
         console.log('err',err)      
     } finally {
-        console.log('finally')
         await client.end()
     }
     throw '500: something weird happened'
 }
 
-const calculateDiff = (srcData: PointAsset[], currentData: DbAsset[]) => { 
-    const specifiedDate: Date = new Date(new Date().setMonth(new Date().getMonth() - 6));
+export const calculateDiff = (srcData: PointAsset[], currentData: DbAsset[]) => { 
+    //TODO create table for these values and fetch from there, when update code is run
+    const lastSuccessfulFetch: Date = new Date(new Date().setMonth(new Date().getMonth() - 6));
 
+    // exclude assets that have other state than built or unknown 
+    const filteredSrc = srcData.filter(src => src['tiekohteen-tila'] === null || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03')
 
-    const preserved = currentData.filter(curr => srcData.some(src => src.oid === curr.externalId));
-    const removed = currentData.filter(curr => !srcData.some(src => src.oid === curr.externalId))
-    const added = srcData.filter(src => !preserved.some(p => p.externalId === src.oid));
-    const updatedOld = preserved.filter(p => {
-        const correspondingSrcAsset = srcData.find(src => src.oid === p.externalId);
+    //TODO implement remove and update later
+    const preserved = currentData.filter(curr => filteredSrc.some(src => src.oid === curr.externalId));
+    //const removed = currentData.filter(curr => !filteredSrc.some(src => src.oid === curr.externalId))
+    const added = filteredSrc.filter(src => !preserved.some(p => p.externalId === src.oid));
+    /* const updatedOld = preserved.filter(p => {
+        const correspondingSrcAsset = filteredSrc.find(src => src.oid === p.externalId);
         if (correspondingSrcAsset && correspondingSrcAsset.muokattu) {
           const muokattuDate = new Date(correspondingSrcAsset.muokattu);
-          return muokattuDate > specifiedDate;
+          return muokattuDate > lastSuccessfulFetch;
         }
         return false;
       });
-    const updatedNew = srcData.filter(src => updatedOld.some(u => u.externalId === src.oid))  
-    const notTouched = preserved.filter(p => !updatedOld.some(u => u.externalId === p.externalId));  
+    const updatedNew = filteredSrc.filter(src => updatedOld.some(u => u.externalId === src.oid))  
+    const notTouched = preserved.filter(p => !updatedOld.some(u => u.externalId === p.externalId));   */
 
     //TODO refactor updatedAsset structure to something more handy
-    return {added: added, removed: removed, updatedOld: updatedOld, updatedNew: updatedNew, notTouched: notTouched}}
+    return {added: added, removed: null, updatedOld: null, updatedNew: null, notTouched: null}}
+
+const saveNewAssets = async (newAssets: EnrichedPointAsset[]) => {
+    const client = await getClient();
+
+    const timeStamp = Date.now() - (Date.now() % (24 * 60 * 60 * 1000)) - (5 * 60 * 60 * 1000);
+
+    try {
+        await client.connect();
+        
+        await client.query('BEGIN');
+        const insertPromises = newAssets.map(async (asset) => {
+            const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria.coordinates[0]} ${asset.keskilinjageometria.coordinates[1]} 0)', 3067)`;
+            const insertSql = `
+                WITH asset_insert AS (
+                    INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code, modified_by, modified_date, geometry)
+                    VALUES (nextval('primary_key_seq'), $1, $2, $3, current_timestamp, $4, null, null, ${pointGeometry})
+                    RETURNING id
+                ),
+                position_insert AS (
+                    INSERT INTO lrm_position (id, start_measure, link_id, adjusted_timestamp, link_source, modified_date)
+                    VALUES (nextval('lrm_position_primary_key_seq'), $5, $6, $7, $8, current_timestamp)
+                    RETURNING id
+                )
+                INSERT INTO asset_link (asset_id, position_id)
+                VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert));
+            `;
+
+            await client.query(insertSql, [
+                asset.oid,              
+                200,                    
+                'Tievelho-import',
+                asset.municipalityCode,                     
+                asset.mValue,           
+                asset.linkId,           
+                timeStamp,              
+                1 // normal link interface
+            ]);
+        });
+
+        await Promise.all(insertPromises);
+        await client.query('COMMIT');
+    } catch (err) {
+        console.error('err', err);
+        await client.query('ROLLBACK');
+        throw new Error('500: Transaction failed');
+    } finally {
+        await client.end();
+    }
+};
+    
 
 const getRoadLinks = async (srcData: PointAsset[]) => {
     const chunkSize = 50
@@ -232,9 +305,8 @@ const getRoadLinks = async (srcData: PointAsset[]) => {
     };
 
     const fetchVKM = async (src: PointAsset[]) => {
-        const locationAndReturnValue = src.map(s => ({...s.sijainti, tunniste: s.oid, palautusarvot: "6"}));
+        const locationAndReturnValue = src.map(s => ({x: s.keskilinjageometria.coordinates[0], y: s.keskilinjageometria.coordinates[1], tunniste: s.oid, palautusarvot: '4,6'}));
         const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-        console.log(encodedBody)
         const response = await fetch('https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/muunna', {
             method: 'POST',
             headers: {
@@ -242,8 +314,6 @@ const getRoadLinks = async (srcData: PointAsset[]) => {
             },
             body: `json=${encodedBody}`,
           });
-
-          console.log("response", response)
         
           if (!response.ok) {
             throw new Error(`Error: ${response.statusText}`);
@@ -261,9 +331,9 @@ const getRoadLinks = async (srcData: PointAsset[]) => {
           const results = await Promise.all(promises);
           const flatResults = results.flat();
   
-          const mappedResults: PointAssetWithLinkId[] = srcData.map(suojatie => {
-              const match = flatResults.find(r => r.tunniste === suojatie.oid);
-              return { ...suojatie, link_id: match?.link_id };
+          const mappedResults: EnrichedPointAsset[] = srcData.map(asset => {
+              const match = flatResults.find(r => r.tunniste === asset.oid);
+              return { ...asset, linkId: match?.link_id, mValue: match?.m_arvo, municipalityCode: match?.kuntakoodi };
           });
   
           return mappedResults;
@@ -273,39 +343,48 @@ const getRoadLinks = async (srcData: PointAsset[]) => {
   }
 }
 
+const filterRoadLinks = async (src: EnrichedPointAsset[]): Promise<EnrichedPointAsset[]> => {
+    const vkmLinks = src.map(s => s.linkId).filter(id => id)
+    console.log(vkmLinks)
+    const client = await getClient()
+    try {
+        await client.connect()
+        const linkIdsString = vkmLinks.map(linkId => `'${linkId}'`).join(',');
+        const sql = `
+        select linkid from kgv_roadlink where linkid in (${linkIdsString})
+        ;`;
+        const query = {
+            text: sql,
+            rowMode: 'array',
+        }
+        const result = await client.query(query)
+        const linkIds = result.rows.map((row: [string]) => row[0])
+        return src.filter(s => linkIds.some(linkid => s.linkId === linkid))
+    } catch (err){
+        console.log('err',err)      
+    } finally {
+        await client.end()
+    }
+    throw '500: something weird happened'
+}
+
 export const handler = async (event:{ely:string}, ctx:any) => {
     console.log(`Event: ${JSON.stringify(event, null, 2)}`);
-    /*
-     * ely
-     * 
-     * ely = ely code as string
-     */
+
     const ely = event.ely
 
     const authToken = await authenticate()
-    console.log({authToken})
     const ely2polku = await listKohdeluokka(authToken, 'kohdeluokka/kohdepisteet-ja-valit/suojatiet')
-    console.log(ely2polku)
     if (!ely2polku[ely]) return
     const srcData = await fetchSourceData(authToken, ely2polku[ely]) as PointAsset[]
-    console.log(srcData)
-    // query mtk link id from vkm with tienumero
-    for (const d of srcData) {
-        const tie = d.sijainti.tie
-        const coords = d.keskilinjageometria.coordinates
-        //await fetchVKM(tie, coords)
-    }
-
+    console.log('src fetched')
     const currentData = await fetchDestData(ely)
-
+    console.log('current db data fetched')
     const {added, removed, updatedOld, updatedNew, notTouched } = calculateDiff(srcData, currentData)
-    //console.log("added", added[0])
-    //console.log("removed", removed[0])
-    //console.log("updated", updatedOld[0])
-    //console.log("notTouched", notTouched[0])
-
+    console.log('diff calculated')
     const dataWithLinks = await getRoadLinks(added)
-    console.log(dataWithLinks[0])
-    
-
+    console.log('road link data fetched')
+    const dataWithDigiroadLinks = await filterRoadLinks(dataWithLinks)
+    console.log('data filtered')
+    await saveNewAssets(dataWithDigiroadLinks)
 }
