@@ -1,4 +1,5 @@
-import { calculateDiff, PointAsset, DbAsset } from '../src/lambda/fetchAndProcess';
+import { PointAsset, PointAssetHandler } from '../src/lambda/pointAssetHandler';
+import { DbAsset } from '../src/lambda/assetHandler';
 
 const srcData: PointAsset[] = [
     {
@@ -95,15 +96,16 @@ const srcData: PointAsset[] = [
       municipalitycode: 123
     }
   ];
-  
+
+const assetHandler = new PointAssetHandler  
 
 test('calculateDiff sorts as added only assets with valid tiekohteen-tila', () => {
-  const result = calculateDiff(srcData, []);
+  const result = assetHandler.calculateDiff(srcData, []);
   expect(result.added.map(r => r.oid)).toEqual(['oid1', 'oid2']);
 });
 
 test('calculateDiff sorts as added only assets not present in db', () => {
-  const result = calculateDiff(srcData, currentData);
+  const result = assetHandler.calculateDiff(srcData, currentData);
   expect(result.added.map(r => r.oid)).toEqual(['oid2']);  
 })
 
