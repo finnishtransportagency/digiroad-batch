@@ -1,7 +1,8 @@
-import { PointAsset, PointAssetHandler } from '../src/lambda/pointAssetHandler';
+import { VelhoAsset } from '../src/lambda/assetHandler';
+import { PointAssetHandler } from '../src/lambda/pointAssetHandler';
 import { DbAsset } from '../src/lambda/assetHandler';
 
-const srcData: PointAsset[] = [
+const srcData: VelhoAsset[] = [
     {
       sijainti: {
         osa: 1,

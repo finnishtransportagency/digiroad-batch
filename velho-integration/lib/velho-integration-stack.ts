@@ -59,13 +59,29 @@ export class VelhoIntegrationStack extends Stack {
  
 
     // states
-    const ELYs = ["16", "15", "13", "11", "10", "08", "05", "06", "01", "02"]
-    const parallelProcessState = new Parallel(this, 'parallelFetchAndProcess', { })
+    const ELYs = ["15", "13", "11", "10", "08", "05", "06", "01", "02"];
+    const assets = [
+      { asset_name: "pedestrian_crossing", asset_type_id: 200, asset_type: "Point", path: "kohdepisteet-ja-valit/suojatiet" },
+      { asset_name: "lit_road", asset_type_id: 100, asset_type: "Linear", path: "varusteet/valaistukset" },
+    ];
+    
+    const parallelProcessState = new Parallel(this, 'parallelFetchAndProcess', {});
+    
     for (const ely of ELYs) {
-      parallelProcessState.branch(new LambdaInvoke(this, `singleFetchAndProcess-${ely}`, {
-        lambdaFunction: fetchAndProcess, payload: TaskInput.fromObject({ ely })
-      }))
+      for (const asset of assets) {
+        parallelProcessState.branch(new LambdaInvoke(this, `singleFetchAndProcess-${ely}-${asset.asset_name}`, {
+          lambdaFunction: fetchAndProcess,
+          payload: TaskInput.fromObject({
+            ely,
+            asset_name: asset.asset_name,
+            asset_type_id: asset.asset_type_id,
+            asset_type: asset.asset_type,
+            path: asset.path,
+          }),
+        }));
+      }
     }
+    
 
     // flow
     const definition = parallelProcessState

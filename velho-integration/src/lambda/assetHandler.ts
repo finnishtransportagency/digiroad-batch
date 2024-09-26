@@ -13,24 +13,80 @@ export interface DbAsset {
 }
 
 export interface VelhoAsset {
-    sijainti: {
-      osa: number,
-      tie: number,
-      etaisyys: number,
-    },
-    'sijainti-oid': string,
+    'sijainti-oid': string;
     sijaintitarkenne: {
-      ajoradat: [
-        string
-      ]
-    },
-    oid: string,
-    luotu: string,
-    muokattu: string,
-    'tiekohteen-tila': string | null
+        ajoradat: string[];
+    };
+    oid: string;
+    luotu: string;
+    muokattu: string;
+    'tiekohteen-tila': string | null | undefined;
+    // for point asset
+    sijainti?: {
+        osa: number;
+        tie: number;
+        etaisyys: number;
+    } | null;
+    keskilinjageometria: 
+        | {  // for point asset
+            coordinates: [number, number, number];
+            type: "Point";
+        }
+        | {  // for linear asset
+            coordinates: [[number, number, number][]];
+            type: "MultiLinestring";
+        };
+    // for linear asset
+    alkusijainti?: {
+        osa: number;
+        tie: number;
+        etaisyys: number;
+    } | null;
+    loppusijainti?: {
+        osa: number;
+        tie: number;
+        etaisyys: number;
+    } | null;
+}
+
+export interface EnrichedVelhoAsset extends VelhoAsset {
+    linkData: Array<{
+        linkId?: string;
+        mValue?: number;
+        mValueEnd?: number;
+        municipalityCode?: number;
+        sideCode?: number;
+    }>;
 }
 
 export abstract class AssetHandler {
+
+    abstract getRoadLinks(srcData: VelhoAsset[]): Promise<VelhoAsset[]>;
+
+    fetchSourceData = async (token:string, path:string) => {
+        try {
+        const response = await fetch(`https://apiv2prdvelho.vaylapilvi.fi/latauspalvelu/api/v1/${path}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer '+token,
+            },
+        });
+    
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+    
+        const ndjson = await response.text()
+        return ndjson
+            .split('\n')
+            .filter((line:string) => line.trim().length > 0) // Remove any empty lines
+            .map((line:string) => JSON.parse(line))
+    } catch (err) {
+        console.log(err)
+        return []
+    }
+    }
+
     fetchDestData = async (typeId: number, municipalities: number[]) => {
         const client = await getClient()
         try {
@@ -78,12 +134,12 @@ export abstract class AssetHandler {
         throw '500: something weird happened'
     }
 
-    calculateDiff = <T extends VelhoAsset>(srcData: T[], currentData: DbAsset[]) => { 
+    calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => { 
         //TODO create table for these values and fetch from there, when update code is run
-        const lastSuccessfulFetch: Date = new Date(new Date().setMonth(new Date().getMonth() - 6));
+        const lastSuccessfulFetch = null
     
         // exclude assets that have other state than built or unknown 
-        const filteredSrc = srcData.filter(src => src['tiekohteen-tila'] === null || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03')
+        const filteredSrc = srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03');
     
         //TODO implement remove and update later
         const preserved = currentData.filter(curr => filteredSrc.some(src => src.oid === curr.externalId));

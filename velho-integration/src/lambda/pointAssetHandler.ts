@@ -1,18 +1,5 @@
 import { getClient} from "./fetchAndProcess"
-import { AssetHandler, VelhoAsset } from "./assetHandler"
-
-export interface PointAsset extends VelhoAsset {
-    keskilinjageometria: {
-        coordinates: [ number, number, number ],
-        type: "Point"
-    }
-}
-
-export interface EnrichedPointAsset extends PointAsset {
-    linkId?: string
-    mValue?: number
-    municipalityCode?: number
-}
+import { AssetHandler, EnrichedVelhoAsset, VelhoAsset } from "./assetHandler"
 
 export interface VKMResponseForPoint {
     features: {
@@ -26,32 +13,8 @@ export interface VKMResponseForPoint {
 }
 
 export class PointAssetHandler extends AssetHandler {
-    fetchSourceData = async (token:string, path:string) => {
-        try {
-        const response = await fetch(`https://apiv2prdvelho.vaylapilvi.fi/latauspalvelu/api/v1/${path}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer '+token,
-            },
-        });
-    
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-    
-        const ndjson = await response.text()
-        return ndjson
-            .split('\n')
-            .filter((line:string) => line.trim().length > 0) // Remove any empty lines
-            .map((line:string) => JSON.parse(line)) as PointAsset[]
-    } catch (err) {
-        console.log(err)
-        return []
-    }
-    }
 
-        
-    getRoadLinks = async (srcData: PointAsset[]) => {
+    getRoadLinks = async (srcData: VelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
         const chunkSize = 50
         const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
             const R: T[][] = [];
@@ -61,7 +24,7 @@ export class PointAssetHandler extends AssetHandler {
             return R;
         };
     
-        const fetchVKM = async (src: PointAsset[]) => {
+        const fetchVKM = async (src: VelhoAsset[]) => {
             const locationAndReturnValue = src.map(s => ({x: s.keskilinjageometria.coordinates[0], y: s.keskilinjageometria.coordinates[1], tunniste: s.oid, palautusarvot: '4,6'}));
             const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
             const response = await fetch('https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/muunna', {
@@ -88,9 +51,9 @@ export class PointAssetHandler extends AssetHandler {
               const results = await Promise.all(promises);
               const flatResults = results.flat();
       
-              const mappedResults: EnrichedPointAsset[] = srcData.map(asset => {
+              const mappedResults: EnrichedVelhoAsset[] = srcData.map(asset => {
                   const match = flatResults.find(r => r.tunniste === asset.oid);
-                  return { ...asset, linkId: match?.link_id, mValue: match?.m_arvo, municipalityCode: match?.kuntakoodi };
+                  return { ...asset, linkData: [{ linkId: match?.link_id, mValue: match?.m_arvo, municipalityCode: match?.kuntakoodi }] };
               });
       
               return mappedResults;
@@ -100,20 +63,24 @@ export class PointAssetHandler extends AssetHandler {
       }
     }
 
-    filterRoadLinks = async (src: EnrichedPointAsset[]): Promise<EnrichedPointAsset[]> => {
-        const vkmLinks = src.map(s => s.linkId).filter(id => id)
+    filterRoadLinks = async (src: EnrichedVelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
+        const vkmLinks = src.map(s => s.linkData[0].linkId).filter(id => id)
         const client = await getClient()
         try {
             await client.connect()
             const linkIdsString = vkmLinks.map(linkId => `'${linkId}'`).join(',');
-            const sql = `select linkid from kgv_roadlink where linkid in (${linkIdsString});`;
+            // admin class
+            const sql = `SELECT linkid from kgv_roadlink kr
+                LEFT JOIN administrative_class ac ON kr.linkid = ac.link_id       
+                WHERE kr.linkid IN (${linkIdsString})
+                AND COALESCE(ac.administrative_class, kr.adminclass) = 1;`;
             const query = {
                 text: sql,
                 rowMode: 'array',
             }
             const result = await client.query(query)
             const linkIds = result.rows.map((row: [string]) => row[0])
-            return src.filter(s => linkIds.some(linkid => s.linkId === linkid))
+            return src.filter(s => linkIds.some(linkid => s.linkData[0].linkId === linkid))
         } catch (err){
             console.log('err',err)      
         } finally {
@@ -122,7 +89,7 @@ export class PointAssetHandler extends AssetHandler {
         throw '500: something weird happened'
     }
 
-    saveNewAssets = async (newAssets: EnrichedPointAsset[]) => {
+    saveNewAssets = async (asset_type_id: number, newAssets: EnrichedVelhoAsset[]) => {
         const client = await getClient();
         const timeStamp = Date.now() - (Date.now() % (24 * 60 * 60 * 1000)) - (5 * 60 * 60 * 1000);
     
@@ -131,7 +98,7 @@ export class PointAssetHandler extends AssetHandler {
             
             await client.query('BEGIN');
             const insertPromises = newAssets.map(async (asset) => {
-                const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria.coordinates[0]} ${asset.keskilinjageometria.coordinates[1]} 0)', 3067)`;
+                const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
                 const insertSql = `
                     WITH asset_insert AS (
                         INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code, modified_by, modified_date, geometry)
@@ -149,11 +116,11 @@ export class PointAssetHandler extends AssetHandler {
     
                 await client.query(insertSql, [
                     asset.oid,              
-                    200,                    
+                    asset_type_id,                    
                     'Tievelho-import',
-                    asset.municipalityCode,                     
-                    asset.mValue,           
-                    asset.linkId,           
+                    asset.linkData[0].municipalityCode,                     
+                    asset.linkData[0].mValue,           
+                    asset.linkData[0].linkId,           
                     timeStamp,              
                     1 // normal link interface
                 ]);

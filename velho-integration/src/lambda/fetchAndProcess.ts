@@ -1,7 +1,9 @@
-import { SSMClient, GetParameterCommand, GetParameterResult } from "@aws-sdk/client-ssm";
+import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { Client, ClientConfig } from 'pg';
 import { Agent, setGlobalDispatcher } from 'undici';
 import { PointAssetHandler } from "./pointAssetHandler";
+import { LinearAssetHandler } from "./linearAssetHandler";
+import { VelhoAsset } from "./assetHandler";
 
 const agent = new Agent({
   connect: {
@@ -95,20 +97,20 @@ const fetchMunicipalities = async (digiroadEly: number): Promise<number[]> => {
     throw '500: something weird happened'
 } 
 
-export const handler = async (event:{ely:string}, ctx:any) => {
+export const handler = async (event: { ely: string, asset_name: string, asset_type_id: number, asset_type: string, path: string }, ctx: any) => {
     console.log(`Event: ${JSON.stringify(event, null, 2)}`);
-
-    const ely = event.ely
-    const assetHandler = new PointAssetHandler
+  
+    const { ely, asset_name, asset_type_id, asset_type, path } = event;
+    const assetHandler = asset_type === 'Point' ? new PointAssetHandler : new LinearAssetHandler
 
     const authToken = await authenticate()
-    const ely2polku = await listKohdeluokka(authToken, 'kohdeluokka/kohdepisteet-ja-valit/suojatiet')
+    const ely2polku = await listKohdeluokka(authToken, `kohdeluokka/${path}`)
     if (!ely2polku[ely]) return
-    const srcData = await assetHandler.fetchSourceData(authToken, ely2polku[ely])
+    const srcData = await assetHandler.fetchSourceData(authToken, ely2polku[ely]) as VelhoAsset[]
     console.log('src fetched')
     const digiroadEly = convertEly(ely)
     const municipalities = await fetchMunicipalities(digiroadEly)
-    const currentData = await assetHandler.fetchDestData(200, municipalities)
+    const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
     console.log('current db data fetched')
     const {added, removed, updatedOld, updatedNew, notTouched } = assetHandler.calculateDiff(srcData, currentData)
     console.log('diff calculated')
@@ -116,5 +118,5 @@ export const handler = async (event:{ely:string}, ctx:any) => {
     console.log('road link data fetched')
     const dataWithDigiroadLinks = await assetHandler.filterRoadLinks(dataWithLinks)
     console.log('data filtered')
-    await assetHandler.saveNewAssets(dataWithDigiroadLinks)
+    await assetHandler.saveNewAssets(asset_type_id, dataWithDigiroadLinks)
 }
