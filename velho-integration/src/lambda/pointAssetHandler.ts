@@ -25,7 +25,26 @@ export class PointAssetHandler extends AssetHandler {
         };
     
         const fetchVKM = async (src: VelhoAsset[]) => {
-            const locationAndReturnValue = src.map(s => ({x: s.keskilinjageometria.coordinates[0], y: s.keskilinjageometria.coordinates[1], tunniste: s.oid, palautusarvot: '4,6'}));
+            const locationAndReturnValue = src.map(s => {
+                const roadways = s.sijaintitarkenne.ajoradat || [];
+                const roadwayNumbers = roadways.map(ajorata => ajorata.match(/\d+/)).filter(match => match !== null).map(match => match[0])
+
+                if (s.keskilinjageometria.type !== 'Point') throw "illegal geometry type for point asset"
+
+                // only add roadway parameter if exists
+                const params: {x: number, y: number, tunniste: string, palautusarvot: string, ajr?: string} = {
+                  x: s.keskilinjageometria.coordinates[0],
+                  y: s.keskilinjageometria.coordinates[1],
+                  tunniste: s.oid,
+                  palautusarvot: '4,6'
+                };
+              
+                if (roadwayNumbers.length > 0) {
+                  params['ajr'] = roadwayNumbers.join(',');
+                }
+              
+                return params;
+              });  
             const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
             const response = await fetch('https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/muunna', {
                 method: 'POST',
@@ -64,22 +83,33 @@ export class PointAssetHandler extends AssetHandler {
     }
 
     filterRoadLinks = async (src: EnrichedVelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
-        const vkmLinks = src.map(s => s.linkData[0].linkId).filter(id => id)
+        const vkmLinks = src.map(s => s.linkData[0].linkId).filter(id => id !== undefined)
         const client = await getClient()
         try {
             await client.connect()
             const linkIdsString = vkmLinks.map(linkId => `'${linkId}'`).join(',');
             // admin class
-            const sql = `SELECT linkid from kgv_roadlink kr
-                LEFT JOIN administrative_class ac ON kr.linkid = ac.link_id       
-                WHERE kr.linkid IN (${linkIdsString})
-                AND COALESCE(ac.administrative_class, kr.adminclass) = 1;`;
+            const sql = `
+                SELECT linkid from kgv_roadlink kr
+                    LEFT JOIN administrative_class ac ON kr.linkid = ac.link_id       
+                    WHERE kr.linkid IN (${linkIdsString})
+                    AND COALESCE(ac.administrative_class, kr.adminclass) = 1;
+            `;
             const query = {
                 text: sql,
                 rowMode: 'array',
             }
             const result = await client.query(query)
+            
             const linkIds = result.rows.map((row: [string]) => row[0])
+
+            console.log(`Links found in db ${linkIds.length}/${vkmLinks.length}`);
+
+            const missingLinks = vkmLinks.filter(linkId => !linkIds.includes(linkId));
+
+            if (missingLinks.length > 0) {
+                console.log('Missing links in db:', missingLinks.join(','));
+            }
             return src.filter(s => linkIds.some(linkid => s.linkData[0].linkId === linkid))
         } catch (err){
             console.log('err',err)      
