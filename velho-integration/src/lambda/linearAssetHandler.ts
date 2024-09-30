@@ -27,7 +27,7 @@ interface LinkData {
 
 export class LinearAssetHandler extends AssetHandler {
     
-    getRoadLinks = async (srcData: VelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<EnrichedVelhoAsset[]> => {
         const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
             const R: T[][] = [];
             for (let i = 0, len = array.length; i < len; i += chunkSize) {
@@ -41,10 +41,11 @@ export class LinearAssetHandler extends AssetHandler {
             const locationAndReturnValue = src.map(s => ({tie: s.alkusijainti?.tie, osa: s.alkusijainti?.osa, etaisyys: s.alkusijainti?.etaisyys, 
                 osa_loppu: s.loppusijainti?.osa, etaisyys_loppu: s.loppusijainti?.etaisyys, tunniste: s.oid, palautusarvot: '4,6', valihaku: true}));    
                 const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-            const response = await fetch('https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/muunna', {
+            const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                  'X-API-KEY': `${vkmApiKey}`
                 },
                 body: `json=${encodedBody}`,
               });
@@ -70,10 +71,11 @@ export class LinearAssetHandler extends AssetHandler {
                 tunniste: s.tunniste, palautusarvot: '4,6', valihaku: "true"}));    
                 
             const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-            const response = await fetch('https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/muunna', {
+            const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                  'X-API-KEY': `${vkmApiKey}`
                 },
                 body: `json=${encodedBody}`,
               });

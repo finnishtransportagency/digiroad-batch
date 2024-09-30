@@ -61,7 +61,7 @@ export interface EnrichedVelhoAsset extends VelhoAsset {
 
 export abstract class AssetHandler {
 
-    abstract getRoadLinks(srcData: VelhoAsset[]): Promise<VelhoAsset[]>;
+    abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoAsset[]>;
 
     fetchSourceData = async (token:string, path:string) => {
         try {

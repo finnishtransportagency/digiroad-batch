@@ -14,7 +14,7 @@ export interface VKMResponseForPoint {
 
 export class PointAssetHandler extends AssetHandler {
 
-    getRoadLinks = async (srcData: VelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<EnrichedVelhoAsset[]> => {
         const chunkSize = 50
         const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
             const R: T[][] = [];
@@ -46,10 +46,11 @@ export class PointAssetHandler extends AssetHandler {
                 return params;
               });  
             const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-            const response = await fetch('https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/muunna', {
+            const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                  'X-API-KEY': `${vkmApiKey}`
                 },
                 body: `json=${encodedBody}`,
               });

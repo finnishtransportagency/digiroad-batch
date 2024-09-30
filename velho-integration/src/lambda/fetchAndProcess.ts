@@ -15,6 +15,8 @@ setGlobalDispatcher(agent)
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION });
 
+const getVkmApiKey = async () => (await ssm.send(new GetParameterCommand({ Name: '/prod/apikey/viitekehysmuunnin', WithDecryption: true}))).Parameter?.Value
+
 export const getClient = async (): Promise<Client> => {
     const config:ClientConfig = { 
       user: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.username` }))).Parameter?.Value,
@@ -97,7 +99,8 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
   
     const { ely, asset_name, asset_type_id, asset_type, path } = event;
     const assetHandler = asset_type === 'Point' ? new PointAssetHandler : new LinearAssetHandler
-
+    const vkmApiKey = await getVkmApiKey()
+    if (!vkmApiKey) throw new Error("vkm api key is not defined")
     const authToken = await authenticate()
     const ely2polku = await listKohdeluokka(authToken, `kohdeluokka/${path}`)
     if (!ely2polku[ely]) return
@@ -109,7 +112,7 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     console.log(`fetched ${currentData.length} assets from digiroad`)
     const {added, removed, updatedOld, updatedNew, notTouched } = assetHandler.calculateDiff(srcData, currentData)
     console.log(`assets to add: ${added.length}`)
-    const dataWithLinks = await assetHandler.getRoadLinks(added)
+    const dataWithLinks = await assetHandler.getRoadLinks(added, vkmApiKey)
     console.log('road link data fetched')
     const dataWithDigiroadLinks = await assetHandler.filterRoadLinks(dataWithLinks)
     await assetHandler.saveNewAssets(asset_type_id, dataWithDigiroadLinks)
