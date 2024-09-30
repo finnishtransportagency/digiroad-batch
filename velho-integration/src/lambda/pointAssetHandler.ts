@@ -77,7 +77,7 @@ export class PointAssetHandler extends AssetHandler {
       
               return mappedResults;
         } catch (err) {
-            console.error('err', err);
+            console.error('error during VKM fetch', err);
             return []
       }
     }
@@ -103,7 +103,7 @@ export class PointAssetHandler extends AssetHandler {
             
             const linkIds = result.rows.map((row: [string]) => row[0])
 
-            console.log(`Links found in db ${linkIds.length}/${vkmLinks.length}`);
+            console.log(`VKM links found in db ${linkIds.length}/${vkmLinks.length}`);
 
             const missingLinks = vkmLinks.filter(linkId => !linkIds.includes(linkId));
 
@@ -112,11 +112,11 @@ export class PointAssetHandler extends AssetHandler {
             }
             return src.filter(s => linkIds.some(linkid => s.linkData[0].linkId === linkid))
         } catch (err){
-            console.log('err',err)      
+            console.log('error during road link filtering',err)      
         } finally {
             await client.end()
         }
-        throw '500: something weird happened'
+        throw '500 during road link filtering'
     }
 
     saveNewAssets = async (asset_type_id: number, newAssets: EnrichedVelhoAsset[]) => {

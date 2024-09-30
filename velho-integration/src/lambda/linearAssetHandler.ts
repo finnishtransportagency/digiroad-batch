@@ -103,7 +103,7 @@ export class LinearAssetHandler extends AssetHandler {
       
               return mappedResults;
         } catch (err) {
-            console.error('err', err);
+            console.error('error during VKM fetch', err);
             return []
       }
     }
@@ -151,7 +151,7 @@ export class LinearAssetHandler extends AssetHandler {
                 sideCode: row[1],
             }));
             
-            console.log(`Links found in db ${matchedLinks.length}/${allLinkIds.length}`);
+            console.log(`VKM inks found in db ${matchedLinks.length}/${allLinkIds.length}`);
             
             return src.map(asset => {
                 const filteredLinkData = asset.linkData

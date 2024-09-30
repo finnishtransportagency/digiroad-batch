@@ -73,16 +73,11 @@ const listKohdeluokka = async (token:string, target:string):Promise<{ [key:strin
     }, {})
 }
 
-const convertEly = (velhoEly: string): number => {
-    const velhoElyToDigiroad: {[velhoEly: string]: number } = { "16": 0, "15": 1, "13": 2, "11": 3, "10": 4, "08": 5, "05": 6, "06": 7, "01": 8, "02": 9}
-    return velhoElyToDigiroad[velhoEly]
-}
-
-const fetchMunicipalities = async (digiroadEly: number): Promise<number[]> => {
+const fetchMunicipalities = async (ely: string): Promise<number[]> => {
     const client = await getClient()
     try {
         await client.connect()
-        const sql = `select id from municipality where ely_nro = ${digiroadEly};`
+        const sql = `select id from municipality where ely_nro = ${Number(ely)};`
         const query = {
             text: sql,
             rowMode: 'array',
@@ -107,16 +102,15 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     const ely2polku = await listKohdeluokka(authToken, `kohdeluokka/${path}`)
     if (!ely2polku[ely]) return
     const srcData = await assetHandler.fetchSourceData(authToken, ely2polku[ely]) as VelhoAsset[]
-    console.log('src fetched')
-    const digiroadEly = convertEly(ely)
-    const municipalities = await fetchMunicipalities(digiroadEly)
+    console.log(`fetched ${srcData.length} assets from velho`)
+    const municipalities = await fetchMunicipalities(ely)
+    console.log(`municipalities to process: ${municipalities.join(',')}`)
     const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
-    console.log('current db data fetched')
+    console.log(`fetched ${currentData.length} assets from digiroad`)
     const {added, removed, updatedOld, updatedNew, notTouched } = assetHandler.calculateDiff(srcData, currentData)
-    console.log('diff calculated')
+    console.log(`assets to add: ${added.length}`)
     const dataWithLinks = await assetHandler.getRoadLinks(added)
     console.log('road link data fetched')
     const dataWithDigiroadLinks = await assetHandler.filterRoadLinks(dataWithLinks)
-    console.log('data filtered')
     await assetHandler.saveNewAssets(asset_type_id, dataWithDigiroadLinks)
 }
