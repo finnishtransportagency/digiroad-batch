@@ -1,4 +1,4 @@
-import { getClient} from "./fetchAndProcess"
+import { getClient } from "./fetchAndProcess"
 import { AssetHandler, EnrichedVelhoAsset, VelhoAsset } from "./assetHandler"
 
 export interface VKMResponseForPoint {
@@ -19,11 +19,11 @@ export class PointAssetHandler extends AssetHandler {
         const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
             const R: T[][] = [];
             for (let i = 0, len = array.length; i < len; i += chunkSize) {
-              R.push(array.slice(i, i + chunkSize));
+                R.push(array.slice(i, i + chunkSize));
             }
             return R;
         };
-    
+
         const fetchVKM = async (src: VelhoAsset[]) => {
             const locationAndReturnValue = src.map(s => {
                 const roadways = s.sijaintitarkenne.ajoradat || [];
@@ -32,58 +32,69 @@ export class PointAssetHandler extends AssetHandler {
                 if (s.keskilinjageometria.type !== 'Point') throw "illegal geometry type for point asset"
 
                 // only add roadway parameter if exists
-                const params: {x: number, y: number, tunniste: string, palautusarvot: string, ajr?: string} = {
-                  x: s.keskilinjageometria.coordinates[0],
-                  y: s.keskilinjageometria.coordinates[1],
-                  tunniste: s.oid,
-                  palautusarvot: '4,6'
+                const params: { x: number, y: number, tunniste: string, palautusarvot: string, ajr?: string } = {
+                    x: s.keskilinjageometria.coordinates[0],
+                    y: s.keskilinjageometria.coordinates[1],
+                    tunniste: s.oid,
+                    palautusarvot: '4,6'
                 };
-              
+
                 if (roadwayNumbers.length > 0) {
-                  params['ajr'] = roadwayNumbers.join(',');
+                    params['ajr'] = roadwayNumbers.join(',');
                 }
-              
+
                 return params;
-              });  
+            });
             const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
             const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
                 method: 'POST',
                 headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                  'X-API-KEY': `${vkmApiKey}`
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-API-KEY': `${vkmApiKey}`
                 },
                 body: `json=${encodedBody}`,
-              });
-            
-              if (!response.ok) {
+            });
+
+            if (!response.ok) {
                 throw new Error(`Error: ${response.statusText}`);
-              }
-            
-              const data: VKMResponseForPoint = await response.json();
-    
-              return data.features.map(f => f.properties);
-          };
-      
-          const chunkedData = chunkData(srcData, chunkSize);
-          const promises = chunkedData.map(chunk => fetchVKM(chunk));
-      
-          try {
-              const results = await Promise.all(promises);
-              const flatResults = results.flat();
-      
-              const mappedResults: EnrichedVelhoAsset[] = srcData.map(asset => {
-                  const match = flatResults.find(r => r.tunniste === asset.oid);
-                  return { ...asset, linkData: [{ linkId: match?.link_id, mValue: match?.m_arvo, municipalityCode: match?.kuntakoodi }] };
-              });
-      
-              return mappedResults;
-        } catch (err) {
-            console.error('error during VKM fetch', err);
+            }
+
+            const data: VKMResponseForPoint = await response.json();
+
+            return data.features.map(f => f.properties);
+        };
+
+        if (srcData.length === 0) {
+            console.log("No velho assets to fetch roadlinks for")
             return []
-      }
+        }
+
+        const chunkedData = chunkData(srcData, chunkSize);
+        const promises = chunkedData.map(chunk => fetchVKM(chunk));
+
+        try {
+            const results = await Promise.all(promises);
+            const flatResults = results.flat();
+
+            const mappedResults: EnrichedVelhoAsset[] = srcData.map(asset => {
+                const match = flatResults.find(r => r.tunniste === asset.oid);
+                return { ...asset, linkData: [{ linkId: match?.link_id, mValue: match?.m_arvo, municipalityCode: match?.kuntakoodi }] };
+            });
+
+            return mappedResults;
+        } catch (err) {
+            console.error(err);
+            throw new Error("Erroe during vkm fetch")
+        }
     }
 
     filterRoadLinks = async (src: EnrichedVelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
+
+        if (src.length === 0) {
+            console.log("No velho assets to filter")
+            return []
+        }
+
         const vkmLinks = src.map(s => s.linkData[0].linkId).filter(id => id !== undefined)
         const client = await getClient()
         try {
@@ -101,7 +112,7 @@ export class PointAssetHandler extends AssetHandler {
                 rowMode: 'array',
             }
             const result = await client.query(query)
-            
+
             const linkIds = result.rows.map((row: [string]) => row[0])
 
             console.log(`VKM links found in db ${linkIds.length}/${vkmLinks.length}`);
@@ -112,8 +123,8 @@ export class PointAssetHandler extends AssetHandler {
                 console.log('Missing links in db:', missingLinks.join(','));
             }
             return src.filter(s => linkIds.some(linkid => s.linkData[0].linkId === linkid))
-        } catch (err){
-            console.log('error during road link filtering',err)      
+        } catch (err) {
+            console.log('error during road link filtering', err)
         } finally {
             await client.end()
         }
@@ -121,12 +132,18 @@ export class PointAssetHandler extends AssetHandler {
     }
 
     saveNewAssets = async (asset_type_id: number, newAssets: EnrichedVelhoAsset[]) => {
+
+        if (newAssets.length === 0) {
+            console.log("No velho assets to save.")
+            return
+        }
+
         const client = await getClient();
         const timeStamp = Date.now() - (Date.now() % (24 * 60 * 60 * 1000)) - (5 * 60 * 60 * 1000);
-    
+
         try {
             await client.connect();
-            
+
             await client.query('BEGIN');
             const insertPromises = newAssets.map(async (asset) => {
                 const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
@@ -144,19 +161,19 @@ export class PointAssetHandler extends AssetHandler {
                     INSERT INTO asset_link (asset_id, position_id)
                     VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert));
                 `;
-    
+
                 await client.query(insertSql, [
-                    asset.oid,              
-                    asset_type_id,                    
+                    asset.oid,
+                    asset_type_id,
                     'Tievelho-import',
-                    asset.linkData[0].municipalityCode,                     
-                    asset.linkData[0].mValue,           
-                    asset.linkData[0].linkId,           
-                    timeStamp,              
+                    asset.linkData[0].municipalityCode,
+                    asset.linkData[0].mValue,
+                    asset.linkData[0].linkId,
+                    timeStamp,
                     1 // normal link interface
                 ]);
             });
-    
+
             await Promise.all(insertPromises);
             await client.query('COMMIT');
         } catch (err) {
