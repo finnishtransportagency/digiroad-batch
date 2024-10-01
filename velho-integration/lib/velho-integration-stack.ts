@@ -6,9 +6,11 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
-import { Parallel, StateMachine, TaskInput } from "aws-cdk-lib/aws-stepfunctions";
-import { LambdaInvoke } from "aws-cdk-lib/aws-stepfunctions-tasks";
+import { Parallel, StateMachine, TaskInput, Chain } from "aws-cdk-lib/aws-stepfunctions";
+import { LambdaInvoke, SnsPublish } from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
+import { Topic } from "aws-cdk-lib/aws-sns";
+import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 
 export class VelhoIntegrationStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -59,7 +61,8 @@ export class VelhoIntegrationStack extends Stack {
       parameterName: '/prod/apikey/viitekehysmuunnin',
     }).grantRead(fetchAndProcess)
 
- 
+    const failureNotificationTopic = new Topic(this, 'VelhoIntegrationFailureTopic');
+    failureNotificationTopic.addSubscription(new EmailSubscription('kehitys@digiroad.fi'))
 
     // states
     const ELYs = ["15", "13", "11", "10", "08", "05", "06", "01", "02"];
@@ -67,12 +70,14 @@ export class VelhoIntegrationStack extends Stack {
       { asset_name: "pedestrian_crossing", asset_type_id: 200, asset_type: "Point", path: "kohdepisteet-ja-valit/suojatiet" },
       { asset_name: "lit_road", asset_type_id: 100, asset_type: "Linear", path: "varusteet/valaistukset" },
     ];
-    
-    const parallelProcessState = new Parallel(this, 'parallelFetchAndProcess', {});
-    
+
+    let chain: Chain | undefined = undefined;
+
     for (const ely of ELYs) {
+      const parallelAssets = new Parallel(this, `ParallelAssets-${ely}`);
+
       for (const asset of assets) {
-        parallelProcessState.branch(new LambdaInvoke(this, `singleFetchAndProcess-${ely}-${asset.asset_name}`, {
+        const currentTask = new LambdaInvoke(this, `singleFetchAndProcess-${ely}-${asset.asset_name}`, {
           lambdaFunction: fetchAndProcess,
           payload: TaskInput.fromObject({
             ely,
@@ -81,13 +86,32 @@ export class VelhoIntegrationStack extends Stack {
             asset_type: asset.asset_type,
             path: asset.path,
           }),
-        }));
+        });
+
+        const snsTask = new SnsPublish(this, `NotifyFailure-${ely}-${asset.asset_name}`, {
+          topic: failureNotificationTopic,
+          message: TaskInput.fromText(`Velho integration failed for ely: ${ely}, asset: ${asset.asset_name}`),
+        });
+
+        const taskWithCatch = currentTask.addCatch(snsTask, {
+          resultPath: '$.error-info'
+        });
+
+        parallelAssets.branch(Chain.start(taskWithCatch));
+      }
+      if (!chain) {
+        chain = Chain.start(parallelAssets);
+      } else {
+        chain = chain.next(parallelAssets);
       }
     }
-    
 
-    // flow
-    const definition = parallelProcessState
+    if (!chain) {
+      throw new Error('No tasks were created in the chain.');
+    }
+
+    // flow 
+    const definition = chain;
 
     // state machine
     const statemachineLogs = new LogGroup(this, 'fetchAndProcess', {
@@ -103,7 +127,7 @@ export class VelhoIntegrationStack extends Stack {
       }
     });
 
-     const eventRule = new Rule(this, 'mondayIntegrationRoutine', {
+    const eventRule = new Rule(this, 'mondayIntegrationRoutine', {
       schedule: Schedule.cron({ weekDay: 'MON', hour: '5', minute: '0' }),
     });
     eventRule.addTarget(new SfnStateMachine(fetchAndProcessStateMachine));
