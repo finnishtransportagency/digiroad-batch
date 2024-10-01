@@ -20,7 +20,7 @@ const getVkmApiKey = async () => (await ssm.send(new GetParameterCommand({ Name:
 export const getClient = async (): Promise<Client> => {
     const config: ClientConfig = {
         user: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.username` }))).Parameter?.Value,
-        host: 'velhotestdb.c8sq5c8rj3gu.eu-west-1.rds.amazonaws.com', //(await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.host` }))).Parameter?.Value,
+        host: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.host` }))).Parameter?.Value,
         database: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.databasename` }))).Parameter?.Value,
         password: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.password`, WithDecryption: true }))).Parameter?.Value,
         port: 5432,
