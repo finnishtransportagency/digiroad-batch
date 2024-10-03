@@ -51,6 +51,9 @@ export class VelhoIntegrationStack extends Stack {
     StringParameter.fromSecureStringParameterAttributes(this, 'db.pw', {
       parameterName: `/${ENV}/bonecp.password`,
     }).grantRead(fetchAndProcess)
+    StringParameter.fromStringParameterAttributes(this, 'velhoBaseUrl', {
+      parameterName: 'velhoLatauspalveluBaseUrl'
+    }).grantRead(fetchAndProcess)
     StringParameter.fromStringParameterAttributes(this, 'velhoUser', {
       parameterName: `/${ENV}/velho-prod.username`
     }).grantRead(fetchAndProcess)

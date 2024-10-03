@@ -1,4 +1,4 @@
-import { getClient } from "./fetchAndProcess"
+import { getClient, getVelhoBaseUrl } from "./fetchAndProcess"
 
 export interface DbAsset {
     externalId: string | null,
@@ -27,15 +27,15 @@ export interface VelhoAsset {
         tie: number;
         etaisyys: number;
     } | null;
-    keskilinjageometria: 
-        | {  // for point asset
-            coordinates: [number, number, number];
-            type: "Point";
-        }
-        | {  // for linear asset
-            coordinates: [[number, number, number][]];
-            type: "MultiLinestring";
-        };
+    keskilinjageometria:
+    | {  // for point asset
+        coordinates: [number, number, number];
+        type: "Point";
+    }
+    | {  // for linear asset
+        coordinates: [[number, number, number][]];
+        type: "MultiLinestring";
+    };
     // for linear asset
     alkusijainti?: {
         osa: number;
@@ -63,28 +63,29 @@ export abstract class AssetHandler {
 
     abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoAsset[]>;
 
-    fetchSourceData = async (token:string, path:string) => {
+    fetchSourceData = async (token: string, path: string) => {
+        const baseUrl = await getVelhoBaseUrl()
         try {
-        const response = await fetch(`https://apiv2prdvelho.vaylapilvi.fi/latauspalvelu/api/v1/${path}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer '+token,
-            },
-        });
-    
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            const response = await fetch(`${baseUrl}/${path}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const ndjson = await response.text()
+            return ndjson
+                .split('\n')
+                .filter((line: string) => line.trim().length > 0) // Remove any empty lines
+                .map((line: string) => JSON.parse(line))
+        } catch (err) {
+            console.log(err)
+            return []
         }
-    
-        const ndjson = await response.text()
-        return ndjson
-            .split('\n')
-            .filter((line:string) => line.trim().length > 0) // Remove any empty lines
-            .map((line:string) => JSON.parse(line))
-    } catch (err) {
-        console.log(err)
-        return []
-    }
     }
 
     fetchDestData = async (typeId: number, municipalities: number[]) => {
@@ -107,40 +108,37 @@ export abstract class AssetHandler {
                 and kgv.municipalitycode in (${municipalities.join(',')})
             ;`
             const query = {
-                text: sql,
-                rowMode: 'array',
+                text: sql
             }
-            const result = await client.query(query)
-    
-            const assets: DbAsset[] = result.rows.map((row: any) => ({
-                externalId: row[0] !== null ? row[0] : null,
-                createdBy: row[1],
-                createdDate: new Date(row[2]),
-                modifiedBy: row[3] !== null ? row[3] : null,
-                modifiedDate: row[4] !== null ? new Date(row[4]) : null,
-                linkid: row[5],
-                startMeasure: row[6] !== null ? row[6] : null,
-                endMeasure: row[7] !== null ? row[7] : null,
-                municipalitycode: row[8],
+
+            const assets: DbAsset[] = (await client.query(query)).rows.map((row: any) => ({
+                externalId: row.external_id !== null ? row.external_id : null,
+                createdBy: row.created_by,
+                createdDate: new Date(row.created_date),
+                modifiedBy: row.modified_by !== null ? row.modified_by : null,
+                modifiedDate: row.modified_date !== null ? new Date(row.modified_date) : null,
+                linkid: row.link_id,
+                startMeasure: row.start_measure !== null ? row.start_measure : null,
+                endMeasure: row.end_measure !== null ? row.end_measure : null,
+                municipalitycode: row.municipality_code,
             }));
-            
-    
+
             return assets
-        } catch (err){
-            console.log('err',err)      
+        } catch (err) {
+            console.log('err', err)
         } finally {
             await client.end()
         }
         throw '500: something weird happened'
     }
 
-    calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => { 
+    calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => {
         //TODO create table for these values and fetch from there, when update code is run
         const lastSuccessfulFetch = null
-    
+
         // exclude assets that have other state than built or unknown 
         const filteredSrc = srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03');
-    
+
         //TODO implement remove and update later
         const preserved = currentData.filter(curr => filteredSrc.some(src => src.oid === curr.externalId));
         //const removed = currentData.filter(curr => !filteredSrc.some(src => src.oid === curr.externalId))
@@ -155,7 +153,8 @@ export abstract class AssetHandler {
           });
         const updatedNew = filteredSrc.filter(src => updatedOld.some(u => u.externalId === src.oid))  
         const notTouched = preserved.filter(p => !updatedOld.some(u => u.externalId === p.externalId));   */
-    
+
         //TODO refactor updatedAsset structure to something more handy
-        return {added: added, removed: null, updatedOld: null, updatedNew: null, notTouched: null}}
+        return { added: added, removed: null, updatedOld: null, updatedNew: null, notTouched: null }
+    }
 }

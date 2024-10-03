@@ -15,6 +15,7 @@ setGlobalDispatcher(agent)
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION });
 
+export const getVelhoBaseUrl = async () => (await ssm.send(new GetParameterCommand({ Name: 'velhoLatauspalveluBaseUrl' }))).Parameter?.Value
 const getVkmApiKey = async () => (await ssm.send(new GetParameterCommand({ Name: '/prod/apikey/viitekehysmuunnin', WithDecryption: true }))).Parameter?.Value
 
 export const getClient = async (): Promise<Client> => {
@@ -46,7 +47,8 @@ const authenticate = async () => {
 }
 
 const listKohdeluokka = async (token: string, target: string): Promise<{ [key: string]: string }> => {
-    const response = await fetch(`https://apiv2prdvelho.vaylapilvi.fi/latauspalvelu/api/v1/${target}`, {
+    const baseUrl = await getVelhoBaseUrl()
+    const response = await fetch(`${baseUrl}/${target}`, {
         method: 'GET',
         headers: {
             'Authorization': 'Bearer ' + token,
