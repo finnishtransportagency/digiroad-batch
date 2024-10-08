@@ -74,7 +74,7 @@ export abstract class AssetHandler {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                throw new Error(`HTTP error in fetch source data from velho! Status: ${response.status}`);
             }
 
             const ndjson = await response.text()

@@ -56,7 +56,7 @@ const listKohdeluokka = async (token: string, target: string): Promise<{ [key: s
     });
 
     if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
+        throw new Error(`HTTP error in list kohdeluokka! Status: ${response.status}`);
     }
 
     interface Kohdeluokka {
