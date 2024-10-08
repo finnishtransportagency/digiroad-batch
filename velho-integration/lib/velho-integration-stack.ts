@@ -6,7 +6,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
-import { Parallel, StateMachine, TaskInput, Chain } from "aws-cdk-lib/aws-stepfunctions";
+import { Parallel, StateMachine, TaskInput, Chain, Pass } from "aws-cdk-lib/aws-stepfunctions";
 import { LambdaInvoke, SnsPublish } from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
 import { Topic } from "aws-cdk-lib/aws-sns";
@@ -24,11 +24,11 @@ export class VelhoIntegrationStack extends Stack {
       subnetType: SubnetType.PRIVATE_WITH_EGRESS
     });
 
-    const fetchAndProcess = new NodejsFunction(this, 'FetchAndProcess', {
+    const fetchAndProcess = new NodejsFunction(this, `${ENV}-FetchAndProcess`, {
       vpc,
       vpcSubnets,
       runtime: Runtime.NODEJS_20_X,
-      timeout: Duration.seconds(300),
+      timeout: Duration.seconds(600),
       memorySize: 256,
       entry: './src/lambda/fetchAndProcess.ts',
       handler: 'handler',
@@ -64,7 +64,7 @@ export class VelhoIntegrationStack extends Stack {
       parameterName: '/prod/apikey/viitekehysmuunnin',
     }).grantRead(fetchAndProcess)
 
-    const failureNotificationTopic = new Topic(this, 'VelhoIntegrationFailureTopic');
+    const failureNotificationTopic = new Topic(this, `${ENV}-VelhoIntegrationFailureTopic`);
     failureNotificationTopic.addSubscription(new EmailSubscription('kehitys@digiroad.fi'))
 
     // states
@@ -77,10 +77,10 @@ export class VelhoIntegrationStack extends Stack {
     let chain: Chain | undefined = undefined;
 
     for (const ely of ELYs) {
-      const parallelAssets = new Parallel(this, `ParallelAssets-${ely}`);
+      const parallelAssets = new Parallel(this, `${ENV}-ParallelAssets-${ely}`);
 
       for (const asset of assets) {
-        const currentTask = new LambdaInvoke(this, `singleFetchAndProcess-${ely}-${asset.asset_name}`, {
+        const currentTask = new LambdaInvoke(this, `${ENV}-singleFetchAndProcess-${ely}-${asset.asset_name}`, {
           lambdaFunction: fetchAndProcess,
           payload: TaskInput.fromObject({
             ely,
@@ -91,10 +91,16 @@ export class VelhoIntegrationStack extends Stack {
           }),
         });
 
-        const snsTask = new SnsPublish(this, `NotifyFailure-${ely}-${asset.asset_name}`, {
+        const snsTask = new SnsPublish(this, `${ENV}-NotifyFailure-${ely}-${asset.asset_name}`, {
           topic: failureNotificationTopic,
-          message: TaskInput.fromText(`Velho integration failed for ely: ${ely}, asset: ${asset.asset_name}`),
+          message: TaskInput.fromText(`${ENV}-Velho integration failed for ely: ${ely}, asset: ${asset.asset_name}`),
         });
+
+        const passTask = new Pass(this, `${ENV}-Pass-${ely}-${asset.asset_name}`, {
+          result: TaskInput.fromObject({ message: `Passing ely ${ely} ${asset.asset_name} because of error.` }),
+        });
+
+        snsTask.next(passTask);
 
         const taskWithCatch = currentTask.addCatch(snsTask, {
           resultPath: '$.error-info'
@@ -117,20 +123,20 @@ export class VelhoIntegrationStack extends Stack {
     const definition = chain;
 
     // state machine
-    const statemachineLogs = new LogGroup(this, 'fetchAndProcess', {
+    const statemachineLogs = new LogGroup(this, `${ENV}-fetchAndProcessLogGroup`, {
       retention: RetentionDays.SIX_MONTHS
     });
 
-    const fetchAndProcessStateMachine = new StateMachine(this, 'sm', {
+    const fetchAndProcessStateMachine = new StateMachine(this, `${ENV}-sm`, {
       definition,
-      stateMachineName: 'velho_weekly_fetch',
+      stateMachineName: `${ENV}-velho_weekly_fetch`,
       logs: {
         destination: statemachineLogs,
         includeExecutionData: true
       }
     });
 
-    const eventRule = new Rule(this, 'mondayIntegrationRoutine', {
+    const eventRule = new Rule(this, `${ENV}-mondayIntegrationRoutine`, {
       schedule: Schedule.cron({ weekDay: 'MON', hour: '5', minute: '0' }),
     });
     eventRule.addTarget(new SfnStateMachine(fetchAndProcessStateMachine));
