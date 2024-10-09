@@ -16,7 +16,9 @@ export class VelhoIntegrationStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const ENV = 'dev'
+    const ENV: string | undefined = scope.node.tryGetContext('env')
+
+    if (!ENV) throw new Error('env not defined')
 
     const vpcId = StringParameter.valueFromLookup(this, `/${ENV}/vpcid`);
     const vpc = Vpc.fromLookup(this, vpcId, { vpcId });
