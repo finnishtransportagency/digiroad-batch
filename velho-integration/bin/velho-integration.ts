@@ -5,7 +5,7 @@ import { VelhoIntegrationStack } from '../lib/velho-integration-stack';
 
 const app = new cdk.App();
 
-const envName: string | undefined = app.node.tryGetContext('env')
+const envName: string | undefined = app.node.tryGetContext('env') || process.env.ENV;
 const allowedEnvironments = ['dev', 'qa', 'prod']
 
 if (!envName || !allowedEnvironments.includes(envName)) throw new Error('env not defined or valid')
