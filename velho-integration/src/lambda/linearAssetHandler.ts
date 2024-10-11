@@ -265,4 +265,8 @@ export class LinearAssetHandler extends AssetHandler {
         }
     };
 
+    //TODO implement update for linears when there are asset types to update
+    updateAssets = async (assetsToUpdate: EnrichedVelhoAsset[]) => {
+        return
+    }
 }

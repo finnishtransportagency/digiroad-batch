@@ -184,4 +184,55 @@ export class PointAssetHandler extends AssetHandler {
             await client.end();
         }
     };
+
+    updateAssets = async (assetsToUpdate: EnrichedVelhoAsset[]) => {
+        if (this.updateAssets.length === 0) {
+            console.log("No assets to update.")
+            return
+        }
+
+        const client = await getClient();
+        const timeStamp = Date.now() - (Date.now() % (24 * 60 * 60 * 1000)) - (5 * 60 * 60 * 1000);
+
+        try {
+            await client.connect();
+
+            await client.query('BEGIN');
+            const updatePromises = assetsToUpdate.map(async (asset) => {
+                const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
+                const updateSql = `
+                WITH asset_update AS (
+                    UPDATE asset 
+                    SET modified_by = 'Tievelho-update', modified_date = current_timestamp, municipality_code = $1, geometry = ${pointGeometry}
+                    WHERE external_id = $2
+                    RETURNING id
+                )
+                UPDATE lrm_position 
+                SET start_measure = $3, link_id = $4, adjusted_timestamp = $5, modified_date = current_timestamp
+                WHERE id = (
+                    SELECT position_id 
+                    FROM asset_link 
+                    WHERE asset_id = (SELECT id FROM asset_update)
+                );
+            `;
+
+                await client.query(updateSql, [
+                    asset.linkData[0].municipalityCode,
+                    asset.oid,
+                    asset.linkData[0].mValue,
+                    asset.linkData[0].linkId,
+                    timeStamp
+                ]);
+            });
+
+            await Promise.all(updatePromises);
+            await client.query('COMMIT');
+        } catch (err) {
+            console.error('err', err);
+            await client.query('ROLLBACK');
+            throw new Error('500: Transaction failed');
+        } finally {
+            await client.end();
+        }
+    }
 }
