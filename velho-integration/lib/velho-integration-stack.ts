@@ -12,13 +12,15 @@ import { Construct } from "constructs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 
+interface VelhoIntegrationStackProps extends StackProps {
+  envName: string
+}
+
 export class VelhoIntegrationStack extends Stack {
-  constructor(scope: Construct, id: string, props?: StackProps) {
+  constructor(scope: Construct, id: string, props: VelhoIntegrationStackProps) {
     super(scope, id, props);
 
-    const ENV: string | undefined = scope.node.tryGetContext('env')
-
-    if (!ENV) throw new Error('env not defined')
+    const ENV = props.envName
 
     const vpcId = StringParameter.valueFromLookup(this, `/${ENV}/vpcid`);
     const vpc = Vpc.fromLookup(this, vpcId, { vpcId });
