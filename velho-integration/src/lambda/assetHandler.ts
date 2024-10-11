@@ -1,6 +1,7 @@
 import { getClient, getVelhoBaseUrl } from "./fetchAndProcess"
 
 export interface DbAsset {
+    id: number
     externalId: string | null,
     createdBy: string,
     createdDate: Date,
@@ -93,7 +94,7 @@ export abstract class AssetHandler {
         try {
             await client.connect()
             const sql = `
-            select asset.external_id, asset.created_by, asset.created_date, asset.modified_by, asset.modified_date, kgv.linkid, lp.start_measure, lp.end_measure, kgv.municipalitycode
+            select asset.id, asset.external_id, asset.created_by, asset.created_date, asset.modified_by, asset.modified_date, kgv.linkid, lp.start_measure, lp.end_measure, kgv.municipalitycode
             from asset
                 left join asset_link
                     on asset.id = asset_link.asset_id
@@ -112,6 +113,7 @@ export abstract class AssetHandler {
             }
 
             const assets: DbAsset[] = (await client.query(query)).rows.map((row: any) => ({
+                id: row.id,
                 externalId: row.external_id !== null ? row.external_id : null,
                 createdBy: row.created_by,
                 createdDate: new Date(row.created_date),
@@ -133,28 +135,61 @@ export abstract class AssetHandler {
     }
 
     calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => {
-        //TODO create table for these values and fetch from there, when update code is run
-        const lastSuccessfulFetch = null
 
         // exclude assets that have other state than built or unknown 
         const filteredSrc = srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03');
 
-        //TODO implement remove and update later
         const preserved = currentData.filter(curr => filteredSrc.some(src => src.oid === curr.externalId));
-        //const removed = currentData.filter(curr => !filteredSrc.some(src => src.oid === curr.externalId))
+        const expired = currentData.filter(curr => !filteredSrc.some(src => src.oid === curr.externalId))
         const added = filteredSrc.filter(src => !preserved.some(p => p.externalId === src.oid));
-        /* const updatedOld = preserved.filter(p => {
+
+        // asset is considered updated if velho source is modified later than either the created or modified date of the db asset
+        const updatedExternalIds = preserved.filter(p => {
             const correspondingSrcAsset = filteredSrc.find(src => src.oid === p.externalId);
             if (correspondingSrcAsset && correspondingSrcAsset.muokattu) {
-              const muokattuDate = new Date(correspondingSrcAsset.muokattu);
-              return muokattuDate > lastSuccessfulFetch;
+                const muokattuDate = new Date(correspondingSrcAsset.muokattu);
+                if (p.modifiedDate) {
+                    return muokattuDate > p.modifiedDate
+                } else {
+                    return muokattuDate > p.createdDate
+                }
             }
             return false;
-          });
-        const updatedNew = filteredSrc.filter(src => updatedOld.some(u => u.externalId === src.oid))  
-        const notTouched = preserved.filter(p => !updatedOld.some(u => u.externalId === p.externalId));   */
+        }).map(u => u.externalId);
+        const updated = filteredSrc.filter(src => updatedExternalIds.includes(src.oid))
+        const notTouched = preserved.filter(p => !updatedExternalIds.includes(p.externalId));
 
-        //TODO refactor updatedAsset structure to something more handy
-        return { added: added, removed: null, updatedOld: null, updatedNew: null, notTouched: null }
+        return { added: added, expired: expired, updated: updated, notTouched: notTouched }
     }
+
+    expireAssets = async (assetsToExpire: DbAsset[]) => {
+        if (assetsToExpire.length === 0) {
+            console.log("no assets to expire")
+            return
+        }
+
+        const client = await getClient();
+        const idsToExpire = assetsToExpire.map(asset => asset.id)
+
+        try {
+            await client.connect();
+
+            await client.query('BEGIN');
+            const expireSql = `
+            UPDATE asset SET modified_by = 'Tievelho-expire', modified_date = current_timestamp, valid_to = current_timestamp
+            WHERE id in (${idsToExpire.join(',')})
+            `;
+
+            await client.query(expireSql)
+
+            await client.query('COMMIT');
+        } catch (err) {
+            console.error('err', err);
+            await client.query('ROLLBACK');
+            throw new Error('500 during expire assets');
+        } finally {
+            await client.end();
+        }
+    };
+
 }
