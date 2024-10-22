@@ -107,7 +107,6 @@ export class VelhoIntegrationStack extends Stack {
         snsTask.next(passTask);
 
         const taskWithCatch = currentTask.addCatch(snsTask, {
-          resultPath: `$.${ely}-${asset.asset_name}-error-info`
         });
 
         parallelAssets.branch(Chain.start(taskWithCatch));
