@@ -5,6 +5,10 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipelineActions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import { Topic } from 'aws-cdk-lib/aws-sns';
+import { EmailSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
+import { SnsTopic } from 'aws-cdk-lib/aws-events-targets';
+import { EventField, Rule, RuleTargetInput } from 'aws-cdk-lib/aws-events';
 
 interface BatchCICDStackProps extends StackProps {
   branch: string,
@@ -28,6 +32,12 @@ export class BatchCICDStack extends Stack {
 
     const { env, account, region } = branchConfig;
     const sourceOutput = new codepipeline.Artifact();
+
+    const topic = new Topic(this, `${env}-${project}-BuildFailureNotificationTopic`, {
+      displayName: `${env}-${project} build failed`,
+    });
+
+    topic.addSubscription(new EmailSubscription('kehitys@digiroad.fi'));
 
     const sourceAction = new codepipelineActions.GitHubSourceAction({
       actionName: `${env}-${project}-source-action`,
@@ -64,6 +74,23 @@ export class BatchCICDStack extends Stack {
     });
 
     buildProject.role?.addManagedPolicy(iam.ManagedPolicy.fromManagedPolicyArn(this, 'cicdAdminPolicy', 'arn:aws:iam::aws:policy/AdministratorAccess'))
+
+    const buildEventFailedRule = new Rule(this, `${env}-${project}-BuildFailureRule`, {
+      eventPattern: {
+        source: ['aws.codebuild'],
+        detailType: ['CodeBuild Build State Change'],
+        detail: {
+          'build-status': ['FAILED'],
+          'project-name': [buildProject.projectName],
+        },
+      },
+    });
+
+    buildEventFailedRule.addTarget(new SnsTopic(topic, {
+      message: RuleTargetInput.fromObject({
+        default: `Build for project: ${EventField.fromPath('$.detail.project-name')} has reached the status: ${EventField.fromPath('$.detail.build-status')}. Build started at: ${EventField.fromPath('$.detail.additional-information.build-start-time')}. Build logs link: ${EventField.fromPath('$.detail.additional-information.logs.deep-link')}`
+      }),
+    }));
 
     const buildAction = new codepipelineActions.CodeBuildAction({
       actionName: `${env}-${project}-build-action`,
