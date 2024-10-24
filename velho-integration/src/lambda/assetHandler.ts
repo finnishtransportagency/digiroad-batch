@@ -133,19 +133,20 @@ export abstract class AssetHandler {
         }
         throw '500: something weird happened'
     }
+    // exclude assets that have other state than built or unknown
+    filterUnnecessary = (srcData: VelhoAsset[]) => {
+        return srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03')
+    }
 
     calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => {
 
-        // exclude assets that have other state than built or unknown 
-        const filteredSrc = srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03');
-
-        const preserved = currentData.filter(curr => filteredSrc.some(src => src.oid === curr.externalId));
-        const expired = currentData.filter(curr => !filteredSrc.some(src => src.oid === curr.externalId))
-        const added = filteredSrc.filter(src => !preserved.some(p => p.externalId === src.oid));
+        const preserved = currentData.filter(curr => srcData.some(src => src.oid === curr.externalId));
+        const expired = currentData.filter(curr => !srcData.some(src => src.oid === curr.externalId))
+        const added = srcData.filter(src => !preserved.some(p => p.externalId === src.oid));
 
         // asset is considered updated if velho source is modified later than either the created or modified date of the db asset
         const updatedExternalIds = preserved.filter(p => {
-            const correspondingSrcAsset = filteredSrc.find(src => src.oid === p.externalId);
+            const correspondingSrcAsset = srcData.find(src => src.oid === p.externalId);
             if (correspondingSrcAsset && correspondingSrcAsset.muokattu) {
                 const muokattuDate = new Date(correspondingSrcAsset.muokattu);
                 if (p.modifiedDate) {
@@ -156,7 +157,7 @@ export abstract class AssetHandler {
             }
             return false;
         }).map(u => u.externalId);
-        const updated = filteredSrc.filter(src => updatedExternalIds.includes(src.oid))
+        const updated = srcData.filter(src => updatedExternalIds.includes(src.oid))
         const notTouched = preserved.filter(p => !updatedExternalIds.includes(p.externalId));
 
         return { added: added, expired: expired, updated: updated, notTouched: notTouched }

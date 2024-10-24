@@ -196,27 +196,32 @@ const currentData: DbAsset[] = [
 const assetHandler = new PointAssetHandler
 
 test('calculateDiff sorts as added only assets with valid tiekohteen-tila, no previous assets in db', () => {
-  const result = assetHandler.calculateDiff(srcData, []);
+  const filteredSrc = assetHandler.filterUnnecessary(srcData)
+  const result = assetHandler.calculateDiff(filteredSrc, []);
   expect(result.added.map(r => r.oid)).toEqual(['oid1', 'oid2', 'oid5', 'oid6', 'oid7']);
 });
 
 test('calculateDiff sorts as added only assets not present in db', () => {
-  const result = assetHandler.calculateDiff(srcData, currentData);
+  const filteredSrc = assetHandler.filterUnnecessary(srcData)
+  const result = assetHandler.calculateDiff(filteredSrc, currentData);
   expect(result.added.map(r => r.oid)).toEqual(['oid2']);
 });
 
 test('calculateDiff sorts as expired if an asset is not in srcData or has invalid tiekohteen-tila', () => {
-  const result = assetHandler.calculateDiff(srcData, currentData);
+  const filteredSrc = assetHandler.filterUnnecessary(srcData)
+  const result = assetHandler.calculateDiff(filteredSrc, currentData);
   expect(result.expired.map(r => r.externalId)).toEqual(['oid3', 'oid4']);
 });
 
 test('calculateDiff sorts as updated if a src asset has a later modified date than created or modified date of a db asset', () => {
-  const result = assetHandler.calculateDiff(srcData, currentData);
+  const filteredSrc = assetHandler.filterUnnecessary(srcData)
+  const result = assetHandler.calculateDiff(filteredSrc, currentData);
   expect(result.updated.map(r => r.oid)).toEqual(['oid1', 'oid5']);
 });
 
 test('calculateDiff sorts as notTouched if a db asset has a later created modified date than the modified date of a src asset', () => {
-  const result = assetHandler.calculateDiff(srcData, currentData);
+  const filteredSrc = assetHandler.filterUnnecessary(srcData)
+  const result = assetHandler.calculateDiff(filteredSrc, currentData);
   expect(result.notTouched.map(r => r.externalId)).toEqual(['oid6', 'oid7']);
 });
 

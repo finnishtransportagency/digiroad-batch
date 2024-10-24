@@ -108,12 +108,13 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     if (!ely2polku[ely]) throw new Error("no path found for ely")
     const srcData = await assetHandler.fetchSourceData(authToken, ely2polku[ely]) as VelhoAsset[]
     console.log(`fetched ${srcData.length} assets from velho`)
-    if (srcData.length === 0) return
+    const filteredSrc = assetHandler.filterUnnecessary(srcData)
+    if (filteredSrc.length === 0) return
     const municipalities = await fetchMunicipalities(ely)
     console.log(`municipalities to process: ${municipalities.join(',')}`)
     const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
     console.log(`fetched ${currentData.length} assets from digiroad`)
-    const { added, expired, updated, notTouched } = assetHandler.calculateDiff(srcData, currentData)
+    const { added, expired, updated, notTouched } = assetHandler.calculateDiff(filteredSrc, currentData)
     console.log(`assets left untouched: ${notTouched.length}`)
     console.log(`assets to expire: ${expired.length}`)
     await assetHandler.expireAssets(expired)
