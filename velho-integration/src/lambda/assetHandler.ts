@@ -17,6 +17,7 @@ export interface VelhoAsset {
     'sijainti-oid': string;
     sijaintitarkenne: {
         ajoradat: string[];
+        kaistat?: string[];
     };
     oid: string;
     luotu: string;
@@ -48,6 +49,14 @@ export interface VelhoAsset {
         tie: number;
         etaisyys: number;
     } | null;
+    ominaisuudet?: {
+        materiaali?: string;
+        'pintauksen-tyyppi'?: string;
+        uusiomateriaali?: string;
+        tyyppi?: string;
+        'paallysteen-tyyppi'?: string;
+        runkomateriaali?: string;
+    }
 }
 
 export interface EnrichedVelhoAsset extends VelhoAsset {
@@ -60,14 +69,50 @@ export interface EnrichedVelhoAsset extends VelhoAsset {
     }>;
 }
 
+interface Kohdeluokka {
+    jaottelut: {
+        "alueet/ely": {
+            [ely: string]: {
+                polku: string
+            }
+        }
+    }
+}
+
 export abstract class AssetHandler {
 
     abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoAsset[]>;
 
-    fetchSourceData = async (token: string, path: string) => {
+    private getElyPath = async (token: string, ely: string, path: string): Promise<string> => {
         const baseUrl = await getVelhoBaseUrl()
+        const response = await fetch(`${baseUrl}/kohdeluokka/${path}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error in list kohdeluokka! Status: ${response.status}`);
+        }
+
+        const data = await response.json() as Kohdeluokka
+        const elyKey = `ely/ely${ely}`;
+
+        const elyEntry = data.jaottelut["alueet/ely"][elyKey];
+
+        if (!elyEntry) {
+            throw new Error(`Ely ${ely} not found in list Kohdeluokka.`);
+        }
+
+        return elyEntry.polku;
+    }
+
+    fetchSourceFromPath = async (token: string, ely: string, path: string) => {
+        const baseUrl = await getVelhoBaseUrl()
+        const elyPath = await this.getElyPath(token, ely, path);
         try {
-            const response = await fetch(`${baseUrl}/${path}`, {
+            const response = await fetch(`${baseUrl}/${elyPath}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': 'Bearer ' + token,
@@ -87,6 +132,11 @@ export abstract class AssetHandler {
             console.log(err)
             return []
         }
+    }
+
+    // the default implementation when all velho assets come from one path
+    fetchSource = async (token: string, ely: string, paths: string[]) => {
+        return await this.fetchSourceFromPath(token, ely, paths[0])
     }
 
     fetchDestData = async (typeId: number, municipalities: number[]) => {
@@ -134,7 +184,7 @@ export abstract class AssetHandler {
         throw '500: something weird happened'
     }
     // exclude assets that have other state than built or unknown
-    filterUnnecessary = (srcData: VelhoAsset[]) => {
+    filterUnnecessary(srcData: VelhoAsset[]): VelhoAsset[] {
         return srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03')
     }
 
