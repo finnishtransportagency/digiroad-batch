@@ -3,18 +3,26 @@ import { AssetHandler, EnrichedVelhoAsset } from "./assetHandler";
 import { VelhoAsset } from "./assetHandler";
 import { retryTimeout } from "./utils";
 
-export interface VKMResponseForRoadAddress {
-    features: {
-        properties: {
-            tunniste: string,
-            link_id: string,
-            link_id_loppu: string,
-            m_arvo: number,
-            m_arvo_loppu: number,
-            kuntakoodi: number
-        };
-    }[];
+export interface ValidVKMFeature {
+    properties: {
+        tunniste: string;
+        link_id: string;
+        link_id_loppu: string;
+        m_arvo: number;
+        m_arvo_loppu: number;
+        kuntakoodi: number;
+    };
 }
+
+export interface InvalidVKMFeature {
+    properties: {
+        virheet: string;
+    };
+}
+
+export type VKMResponseForRoadAddress = {
+    features: (ValidVKMFeature | InvalidVKMFeature)[];
+};
 
 interface LinkData {
     tie: number | undefined;
@@ -29,6 +37,10 @@ interface LinkData {
 export class LinearAssetHandler extends AssetHandler {
 
     getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<EnrichedVelhoAsset[]> => {
+        const isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
+            return !('virheet' in feature.properties)
+        }
+
         const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
             const R: T[][] = [];
             for (let i = 0, len = array.length; i < len; i += chunkSize) {
@@ -52,6 +64,8 @@ export class LinearAssetHandler extends AssetHandler {
 
             const vkmResponse: VKMResponseForRoadAddress = await response.json();
 
+            vkmResponse.features = vkmResponse.features.filter(f => isValidVKMFeature(f))
+
             return vkmResponse
         };
 
@@ -74,14 +88,15 @@ export class LinearAssetHandler extends AssetHandler {
                     }));
                     const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
                     const data = await retryTimeout(async () => await fetchVKM(encodedBody), 3, 5000);
-
-                    return data.features.map(f => {
-                        const originalAsset = locationAndReturnValue.find(a => a.tunniste === f.properties.tunniste);
-                        return {
-                            ...f.properties,
-                            tie: originalAsset?.tie
-                        };
-                    });
+                    return data.features
+                        .filter(f => isValidVKMFeature(f))
+                        .map(f => {
+                            const originalAsset = locationAndReturnValue.find(a => a.tunniste === f.properties.tunniste);
+                            return {
+                                ...f.properties,
+                                tie: originalAsset?.tie
+                            };
+                        });
                 });
                 const batchResults = (await Promise.all(batchPromises)).flat();
                 firstResults.push(...batchResults);
@@ -100,15 +115,17 @@ export class LinearAssetHandler extends AssetHandler {
                     const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
                     const data = await retryTimeout(async () => await fetchVKM(encodedBody), 3, 5000);
 
-                    return data.features.map(f => ({ ...f.properties, tie: undefined }))
+                    return data.features
+                        .filter(f => isValidVKMFeature(f))
+                        .map(f => ({ ...f.properties, tie: undefined }))
                 })
                 const batchResults = (await Promise.all(batchPromises)).flat()
                 secondResults.push(...batchResults)
             }
 
-            const mappedResults: EnrichedVelhoAsset[] = srcData.map(asset => {
-                const match = secondResults.find(r => r.tunniste === asset.oid);
-                return { ...asset, linkData: [{ linkId: match?.link_id, mValue: match?.m_arvo, mValueEnd: match?.m_arvo_loppu, municipalityCode: match?.kuntakoodi }] };
+            const mappedResults: EnrichedVelhoAsset[] = secondResults.flatMap(r => {
+                const match = srcData.find(asset => r.tunniste === asset.oid);
+                return match ? [{ ...match, linkData: [{ linkId: r.link_id, mValue: r.m_arvo, mValueEnd: r.m_arvo_loppu, municipalityCode: r.kuntakoodi }] }] : [];
             });
 
             return mappedResults;
