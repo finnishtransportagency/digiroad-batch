@@ -1,6 +1,7 @@
 import { VelhoAsset } from '../src/lambda/assetHandler';
 import { PointAssetHandler } from '../src/lambda/pointAssetHandler';
 import { DbAsset } from '../src/lambda/assetHandler';
+import { Track, VelhoRoadSide, SideCode, VelhoValidityDirection} from '../src/lambda/enumerations';
 
 const srcData: VelhoAsset[] = [
   {
@@ -225,4 +226,30 @@ test('calculateDiff sorts as notTouched if a db asset has a later created modifi
   expect(result.notTouched.map(r => r.externalId)).toEqual(['oid6', 'oid7']);
 });
 
+test("Right side with validity direction towards traffic should return AgainstDigitizing", () => {
+  const result = assetHandler.calculateTrafficSignValidityDirection(
+      SideCode.AgainstDigitizing,
+      VelhoRoadSide.Right,
+      VelhoValidityDirection.TowardsTrafficDirection
+  );
+  expect(result).toBe(SideCode.AgainstDigitizing);
+});
+
+test("Right side with validity direction against traffic should return TowardsDigitizing", () => {
+  const result = assetHandler.calculateTrafficSignValidityDirection(
+      SideCode.AgainstDigitizing,
+      VelhoRoadSide.Right,
+      VelhoValidityDirection.AgainstTrafficDirection
+  );
+  expect(result).toBe(SideCode.AgainstDigitizing);
+});
+
+test("Left side with validity direction towards traffic should return TowardsDigitizing", () => {
+  const result = assetHandler.calculateTrafficSignValidityDirection(
+      SideCode.AgainstDigitizing,
+      VelhoRoadSide.Left,
+      VelhoValidityDirection.TowardsTrafficDirection
+  );
+  expect(result).toBe(SideCode.AgainstDigitizing);
+});
 
