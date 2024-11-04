@@ -1,5 +1,11 @@
 import { PointAssetHandler } from './pointAssetHandler';
+import { VelhoAsset } from "./assetHandler";
 import { Track, VelhoRoadSide, SideCode, VelhoValidityDirection, ValidityDirectionRoadAddress } from './enumerations';
+
+
+export interface VelhoTrafficSignAsset extends VelhoAsset {
+    
+};
 
 export class TrafficSignHandler extends PointAssetHandler {
 
