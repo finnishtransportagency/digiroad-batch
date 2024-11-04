@@ -110,7 +110,7 @@ export class LinearAssetHandler extends AssetHandler {
                 const batchPromises = batch.map(async chunk => {
                     const locationAndReturnValue = chunk.map(c => ({
                         tie: c.tie, link_id: c.link_id, link_id_loppu: c.link_id_loppu,
-                        tunniste: c.tunniste, palautusarvot: '4,6', valihaku: "true"
+                        tunniste: c.tunniste, m_arvo: c.m_arvo, m_arvo_loppu: c.m_arvo_loppu, palautusarvot: '4,6', valihaku: "true"
                     }));
                     const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
                     const data = await retryTimeout(async () => await fetchVKM(encodedBody), 3, 5000);
