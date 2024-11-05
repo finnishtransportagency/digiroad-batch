@@ -1,6 +1,6 @@
 import { getClient } from "./fetchAndProcess";
-import { AssetHandler, EnrichedVelhoAsset } from "./assetHandler";
-import { VelhoAsset } from "./assetHandler";
+import { AssetHandler, VelhoAsset, DbAsset} from "./assetHandler";
+import { VelhoLinearAsset } from "./assetHandler";
 import { retryTimeout } from "./utils";
 
 export interface ValidVKMFeature {
@@ -36,7 +36,19 @@ interface LinkData {
 
 export class LinearAssetHandler extends AssetHandler {
 
-    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<EnrichedVelhoAsset[]> => {
+    override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
+        const diff = super.calculateDiff(srcData, currentData);
+
+        return {
+            added: diff.added as VelhoLinearAsset[],
+            expired: diff.expired,
+            updated: diff.updated as VelhoLinearAsset[],
+            notTouched: diff.notTouched
+        };
+    }
+
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoLinearAsset[]> => {
+        const sourceLinearAssets = srcData as VelhoLinearAsset[]
         const isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
             return !('virheet' in feature.properties)
         }
@@ -69,7 +81,7 @@ export class LinearAssetHandler extends AssetHandler {
             return vkmResponse
         };
 
-        if (srcData.length === 0) {
+        if (sourceLinearAssets.length === 0) {
             console.log("No velho assets to fetch roadlinks for")
             return []
         }
@@ -77,7 +89,7 @@ export class LinearAssetHandler extends AssetHandler {
         try {
 
             const batchSize = 20
-            const chunkedVelhoAssets = chunkData(srcData, 50);
+            const chunkedVelhoAssets = chunkData(sourceLinearAssets, 50);
             const firstResults: LinkData[] = []
             for (let i = 0; i < chunkedVelhoAssets.length; i += batchSize) {
                 const batch = chunkedVelhoAssets.slice(i, i + batchSize)
@@ -123,8 +135,8 @@ export class LinearAssetHandler extends AssetHandler {
                 secondResults.push(...batchResults)
             }
 
-            const mappedResults: EnrichedVelhoAsset[] = secondResults.flatMap(r => {
-                const match = srcData.find(asset => r.tunniste === asset.oid);
+            const mappedResults: VelhoLinearAsset[] = secondResults.flatMap(r => {
+                const match = sourceLinearAssets.find(asset => r.tunniste === asset.oid);
                 return match ? [{ ...match, linkData: [{ linkId: r.link_id, mValue: r.m_arvo, mValueEnd: r.m_arvo_loppu, municipalityCode: r.kuntakoodi }] }] : [];
             });
 
@@ -136,14 +148,15 @@ export class LinearAssetHandler extends AssetHandler {
         }
     }
 
-    filterRoadLinks = async (src: EnrichedVelhoAsset[]): Promise<EnrichedVelhoAsset[]> => {
-
-        if (src.length === 0) {
+    override async filterRoadLinks(src: VelhoAsset[]): Promise<VelhoLinearAsset[]> {
+        const linearAssets = src as VelhoLinearAsset[];
+        if (linearAssets.length === 0) {
             console.log("No velho assets to filter")
             return []
         }
 
-        const allLinkIds = src.flatMap(s => s.linkData.map(ld => ld.linkId)).filter(id => id);
+        const allLinkIds = linearAssets.flatMap(s => s.linkData ? s.linkData.map(ld => ld.linkId) : []).filter(id => id);
+
         const client = await getClient();
 
         const missingLinkIds: string[] = [];
@@ -186,8 +199,8 @@ export class LinearAssetHandler extends AssetHandler {
 
             console.log(`VKM links found in db ${matchedLinks.length}/${allLinkIds.length}`);
 
-            return src.map(asset => {
-                const filteredLinkData = asset.linkData
+            return linearAssets.map(asset => {
+                const filteredLinkData = (asset.linkData || [])
                     .map(ld => {
                         const match = matchedLinks.find(link => link.linkId === ld.linkId);
                         if (match) {
@@ -225,9 +238,10 @@ export class LinearAssetHandler extends AssetHandler {
     };
 
 
-    saveNewAssets = async (asset_type_id: number, newAssets: EnrichedVelhoAsset[]) => {
+    override async saveNewAssets(asset_type_id: number, newAssets: VelhoAsset[]) {
+        const newLinearAssets = newAssets as VelhoLinearAsset[];
 
-        if (newAssets.length === 0) {
+        if (newLinearAssets.length === 0) {
             console.log("No assets to save.")
             return
         }
@@ -239,8 +253,8 @@ export class LinearAssetHandler extends AssetHandler {
             await client.connect();
 
             await client.query('BEGIN');
-            const insertPromises = newAssets.map((asset) => {
-                asset.linkData.map(async (data) => {
+            const insertPromises = newLinearAssets.map((asset) => {
+                (asset.linkData || []).map(async (data) => {
                     const insertSql = `
                     WITH asset_insert AS (
                         INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code)
@@ -283,7 +297,7 @@ export class LinearAssetHandler extends AssetHandler {
     };
 
     //TODO implement update for linears when there are asset types to update
-    updateAssets = async (assetsToUpdate: EnrichedVelhoAsset[]) => {
+    updateAssets = async (assetsToUpdate: VelhoAsset[]) => {
         return
     }
 }
