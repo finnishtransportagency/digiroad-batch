@@ -1,8 +1,9 @@
-import { VelhoAsset } from '../src/lambda/assetHandler';
+import { VelhoAsset, VelhoPointAsset } from '../src/lambda/assetHandler';
 import { PointAssetHandler } from '../src/lambda/pointAssetHandler';
 import { DbAsset } from '../src/lambda/assetHandler';
+import { Track, VelhoRoadSide, SideCode, VelhoValidityDirection} from '../src/lambda/enumerations';
 
-const srcData: VelhoAsset[] = [
+const srcData: VelhoPointAsset[] = [
   {
     sijainti: {
       osa: 1,
@@ -224,5 +225,4 @@ test('calculateDiff sorts as notTouched if a db asset has a later created modifi
   const result = assetHandler.calculateDiff(filteredSrc, currentData);
   expect(result.notTouched.map(r => r.externalId)).toEqual(['oid6', 'oid7']);
 });
-
 

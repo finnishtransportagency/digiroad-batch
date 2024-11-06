@@ -23,22 +23,26 @@ export interface VelhoAsset {
     luotu: string;
     muokattu: string;
     'tiekohteen-tila': string | null | undefined;
-    // for point asset
+
+}
+
+export interface VelhoPointAsset extends VelhoAsset {
     sijainti?: {
         osa: number;
         tie: number;
         etaisyys: number;
     } | null;
-    keskilinjageometria:
-    | {  // for point asset
+    keskilinjageometria: {
         coordinates: [number, number, number];
         type: "Point";
     }
-    | {  // for linear asset
+}
+
+export interface VelhoLinearAsset extends VelhoAsset {
+    keskilinjageometria: {
         coordinates: [[number, number, number][]];
         type: "MultiLinestring";
     };
-    // for linear asset
     alkusijainti?: {
         osa: number;
         tie: number;
@@ -49,24 +53,17 @@ export interface VelhoAsset {
         tie: number;
         etaisyys: number;
     } | null;
-    ominaisuudet?: {
-        materiaali?: string;
-        'pintauksen-tyyppi'?: string;
-        uusiomateriaali?: string;
-        tyyppi?: string;
-        'paallysteen-tyyppi'?: string;
-        runkomateriaali?: string;
-    }
 }
 
-export interface EnrichedVelhoAsset extends VelhoAsset {
-    linkData: Array<{
-        linkId?: string;
-        mValue?: number;
-        mValueEnd?: number;
-        municipalityCode?: number;
-        sideCode?: number;
-    }>;
+export interface AssetWithLinkData {
+        asset: VelhoAsset;
+        linkData: Array<{
+            linkId: string;
+            mValue: number;
+            mValueEnd?: number;
+            municipalityCode: number;
+            sideCode?: number;
+        }>;
 }
 
 interface Kohdeluokka {
@@ -81,7 +78,9 @@ interface Kohdeluokka {
 
 export abstract class AssetHandler {
 
-    abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoAsset[]>;
+    abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]>;
+
+    abstract filterRoadLinks(src: AssetWithLinkData[]): Promise<AssetWithLinkData[]>;
 
     private getElyPath = async (token: string, ely: string, path: string): Promise<string> => {
         const baseUrl = await getVelhoBaseUrl()
@@ -188,7 +187,7 @@ export abstract class AssetHandler {
         return srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03')
     }
 
-    calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => {
+    calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
 
         const preserved = currentData.filter(curr => srcData.some(src => src.oid === curr.externalId));
         const expired = currentData.filter(curr => !srcData.some(src => src.oid === curr.externalId))
@@ -242,5 +241,9 @@ export abstract class AssetHandler {
             await client.end();
         }
     };
+
+    abstract saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]): Promise<void>;
+
+    abstract updateAssets(assetsToUpdate: AssetWithLinkData[]): Promise<void>;
 
 }

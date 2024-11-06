@@ -1,4 +1,4 @@
-import { VelhoAsset } from "./assetHandler";
+import { VelhoAsset, VelhoLinearAsset } from "./assetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
 
 enum PavementClass {
@@ -101,10 +101,10 @@ export class PavementHandler extends LinearAssetHandler {
      * @param asset_name asset_name as defined in lambda
      * @returns 
      */
-    override filterUnnecessary(srcData: VelhoAsset[]): VelhoAsset[] {
+    override filterUnnecessary(srcData: VelhoLinearAsset[]): VelhoLinearAsset[] {
         const mainLanes = ['kaista-numerointi/kanu11', 'kaista-numerointi/kanu21', 'kaista-numerointi/kanu31']
         const mainLanesFromOneSide = ['kaista-numerointi/kanu11', 'kaista-numerointi/kanu31']
-        const srcWithValidStatus = super.filterUnnecessary(srcData);
+        const srcWithValidStatus = super.filterUnnecessary(srcData) as VelhoLinearAsset[];
         const necessaryAssets = srcWithValidStatus.filter(s => {
             if (s.sijaintitarkenne.ajoradat && s.sijaintitarkenne.ajoradat.length === 1 && s.sijaintitarkenne.ajoradat[0] === 'ajorata/ajr0') {
                 return !s.sijaintitarkenne.kaistat || s.sijaintitarkenne.kaistat.length === 0 || s.sijaintitarkenne.kaistat.some(lane => mainLanesFromOneSide.includes(lane))
