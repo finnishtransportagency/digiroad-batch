@@ -1,5 +1,5 @@
 import { getClient } from "./fetchAndProcess"
-import { AssetHandler, VelhoAsset, VelhoPointAsset, DbAsset } from "./assetHandler"
+import { AssetHandler, VelhoAsset, VelhoPointAsset, DbAsset, AssetWithLinkData } from "./assetHandler"
 
 export interface VKMResponseForPoint {
     features: {
@@ -25,7 +25,7 @@ export class PointAssetHandler extends AssetHandler {
         };
     }
 
-    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoPointAsset[]> => {
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
         const sourcePointAssets = srcData as VelhoPointAsset[]
         const chunkSize = 50
         const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
@@ -88,9 +88,19 @@ export class PointAssetHandler extends AssetHandler {
             const results = await Promise.all(promises);
             const flatResults = results.flat();
 
-            const mappedResults: VelhoPointAsset[] = sourcePointAssets.map(asset => {
+            // VelhoLinearAsset matches 0 to 1 LinkData
+            const mappedResults: AssetWithLinkData[] = sourcePointAssets.flatMap(asset => {
                 const match = flatResults.find(r => r.tunniste === asset.oid);
-                return { ...asset, linkData: [{ linkId: match?.link_id, mValue: match?.m_arvo, municipalityCode: match?.kuntakoodi }] };
+                return match
+                    ? [{
+                        asset,
+                        linkData: [{
+                            linkId: match.link_id,
+                            mValue: match.m_arvo,
+                            municipalityCode: match.kuntakoodi
+                        }]
+                    }]
+                    : [];
             });
 
             return mappedResults;
@@ -100,19 +110,18 @@ export class PointAssetHandler extends AssetHandler {
         }
     }
 
-    override async filterRoadLinks(src: VelhoAsset[]): Promise<VelhoPointAsset[]> {
-        const pointAssets = src as VelhoPointAsset[];
-        if (pointAssets.length === 0) {
+    override async filterRoadLinks(assetsWithLinkData: AssetWithLinkData[]): Promise<AssetWithLinkData[]> {
+        if (assetsWithLinkData.length === 0) {
             console.log("No velho assets to filter")
             return []
         }
 
-        const vkmLinks = pointAssets.flatMap(s => s.linkData ? s.linkData.map(link => link.linkId) : []).filter(id => id !== undefined);
+        const vkmLinkIds = assetsWithLinkData.flatMap(asset => asset.linkData.map(link => link.linkId)).filter(id => id);
 
         const client = await getClient()
         try {
             await client.connect()
-            const linkIdsString = vkmLinks.map(linkId => `'${linkId}'`).join(',');
+            const linkIdsString = vkmLinkIds.map(linkId => `'${linkId}'`).join(',');
             // admin class
             const sql = `
                 SELECT linkid from kgv_roadlink kr
@@ -128,14 +137,14 @@ export class PointAssetHandler extends AssetHandler {
 
             const linkIds = result.rows.map((row: [string]) => row[0])
 
-            console.log(`VKM links found in db ${linkIds.length}/${vkmLinks.length}`);
+            console.log(`VKM links found in db ${linkIds.length}/${vkmLinkIds.length}`);
 
-            const missingLinks = vkmLinks.filter(linkId => !linkIds.includes(linkId));
+            const missingLinks = vkmLinkIds.filter(linkId => !linkIds.includes(linkId));
 
             if (missingLinks.length > 0) {
                 console.log('Missing links in db:', missingLinks.join(','));
             }
-            return pointAssets.filter(s => 
+            return assetsWithLinkData.filter(s => 
                 s.linkData?.[0]?.linkId !== undefined && linkIds.some(linkid => s.linkData?.[0]?.linkId === linkid)
             );
             
@@ -147,10 +156,9 @@ export class PointAssetHandler extends AssetHandler {
         throw '500 during road link filtering'
     }
 
-    override async saveNewAssets(asset_type_id: number, newAssets: VelhoAsset[]) {
-        const newPointAssets = newAssets as VelhoPointAsset[]
+    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
 
-        if (newPointAssets.length === 0) {
+        if (newAssets.length === 0) {
             console.log("No velho assets to save.")
             return
         }
@@ -162,8 +170,9 @@ export class PointAssetHandler extends AssetHandler {
             await client.connect();
 
             await client.query('BEGIN');
-            const insertPromises = newPointAssets.map(async (asset) => {
-                const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
+            const insertPromises = newAssets.map(async (assetWithLinkData) => {
+                const pointAsset = assetWithLinkData.asset as VelhoPointAsset
+                const pointGeometry = `ST_GeomFromText('POINT(${pointAsset.keskilinjageometria?.coordinates[0]} ${pointAsset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
                 const insertSql = `
                     WITH asset_insert AS (
                         INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code, modified_by, modified_date, geometry)
@@ -180,12 +189,12 @@ export class PointAssetHandler extends AssetHandler {
                 `;
 
                 await client.query(insertSql, [
-                    asset.oid,
+                    assetWithLinkData.asset.oid,
                     asset_type_id,
                     'Tievelho-import',
-                    asset.linkData?.[0]?.municipalityCode ?? null,
-                    asset.linkData?.[0]?.mValue ?? null,
-                    asset.linkData?.[0]?.linkId ?? null,
+                    assetWithLinkData.linkData?.[0]?.municipalityCode,
+                    assetWithLinkData.linkData?.[0]?.mValue,
+                    assetWithLinkData.linkData?.[0]?.linkId,
                     timeStamp,
                     1 // normal link interface
                 ]);
@@ -202,8 +211,7 @@ export class PointAssetHandler extends AssetHandler {
         }
     };
 
-    override async updateAssets(assetsToUpdate: VelhoAsset[]) {
-        const pointAssetsToUpdate = assetsToUpdate as VelhoPointAsset[]
+    override async updateAssets(assetsToUpdate: AssetWithLinkData[]) {
 
         if (this.updateAssets.length === 0) {
             console.log("No assets to update.")
@@ -217,8 +225,9 @@ export class PointAssetHandler extends AssetHandler {
             await client.connect();
 
             await client.query('BEGIN');
-            const updatePromises = pointAssetsToUpdate.map(async (asset) => {
-                const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
+            const updatePromises = assetsToUpdate.map(async (assetWithLinkData) => {
+                const pointAsset = assetWithLinkData.asset as VelhoPointAsset
+                const pointGeometry = `ST_GeomFromText('POINT(${pointAsset.keskilinjageometria?.coordinates[0]} ${pointAsset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
                 const updateSql = `
                 WITH asset_update AS (
                     UPDATE asset 
@@ -236,10 +245,10 @@ export class PointAssetHandler extends AssetHandler {
             `;
 
             await client.query(updateSql, [
-                asset.linkData?.[0]?.municipalityCode ?? null,
-                asset.oid,
-                asset.linkData?.[0]?.mValue ?? null,
-                asset.linkData?.[0]?.linkId ?? null,
+                assetWithLinkData.linkData?.[0]?.municipalityCode,
+                assetWithLinkData.asset.oid,
+                assetWithLinkData.linkData?.[0]?.mValue,
+                assetWithLinkData.linkData?.[0]?.linkId,
                 timeStamp
             ]);
             });

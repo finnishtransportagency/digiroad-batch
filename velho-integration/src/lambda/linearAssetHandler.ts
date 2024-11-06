@@ -1,5 +1,5 @@
 import { getClient } from "./fetchAndProcess";
-import { AssetHandler, VelhoAsset, DbAsset} from "./assetHandler";
+import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
 import { retryTimeout } from "./utils";
 
@@ -47,7 +47,7 @@ export class LinearAssetHandler extends AssetHandler {
         };
     }
 
-    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoLinearAsset[]> => {
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
         const sourceLinearAssets = srcData as VelhoLinearAsset[]
         const isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
             return !('virheet' in feature.properties)
@@ -135,9 +135,20 @@ export class LinearAssetHandler extends AssetHandler {
                 secondResults.push(...batchResults)
             }
 
-            const mappedResults: VelhoLinearAsset[] = secondResults.flatMap(r => {
-                const match = sourceLinearAssets.find(asset => r.tunniste === asset.oid);
-                return match ? [{ ...match, linkData: [{ linkId: r.link_id, mValue: r.m_arvo, mValueEnd: r.m_arvo_loppu, municipalityCode: r.kuntakoodi }] }] : [];
+            // VelhoLinearAsset matches 0 to many LinkData
+            const mappedResults: AssetWithLinkData[] = sourceLinearAssets.map(asset => {
+                const matchedLinkData = secondResults.filter(link => link.tunniste === asset.oid)
+                    .map(link => ({
+                        linkId: link.link_id,
+                        mValue: link.m_arvo,
+                        mValueEnd: link.m_arvo_loppu,
+                        municipalityCode: link.kuntakoodi
+                    }));
+            
+                return {
+                    asset: asset,
+                    linkData: matchedLinkData
+                };
             });
 
             return mappedResults;
@@ -148,14 +159,13 @@ export class LinearAssetHandler extends AssetHandler {
         }
     }
 
-    override async filterRoadLinks(src: VelhoAsset[]): Promise<VelhoLinearAsset[]> {
-        const linearAssets = src as VelhoLinearAsset[];
-        if (linearAssets.length === 0) {
+    override async filterRoadLinks(assetsWithLinkData: AssetWithLinkData[]): Promise<AssetWithLinkData[]> {
+        if (assetsWithLinkData.length === 0) {
             console.log("No velho assets to filter")
             return []
         }
 
-        const allLinkIds = linearAssets.flatMap(s => s.linkData ? s.linkData.map(ld => ld.linkId) : []).filter(id => id);
+        const vkmLinkIds = assetsWithLinkData.flatMap(asset => asset.linkData.map(link => link.linkId)).filter(id => id);
 
         const client = await getClient();
 
@@ -163,7 +173,7 @@ export class LinearAssetHandler extends AssetHandler {
 
         try {
             await client.connect();
-            const linkIdsString = allLinkIds.map(linkId => `'${linkId}'`).join(',');
+            const linkIdsString = vkmLinkIds.map(linkId => `'${linkId}'`).join(',');
             const sql = `
                 SELECT 
                     kr.linkid,
@@ -197,24 +207,23 @@ export class LinearAssetHandler extends AssetHandler {
                 sideCode: row[1],
             }));
 
-            console.log(`VKM links found in db ${matchedLinks.length}/${allLinkIds.length}`);
+            console.log(`VKM links found in db ${matchedLinks.length}/${vkmLinkIds.length}`);
 
-            return linearAssets.map(asset => {
-                const filteredLinkData = (asset.linkData || [])
-                    .map(ld => {
-                        const match = matchedLinks.find(link => link.linkId === ld.linkId);
-                        if (match) {
-                            return {
-                                ...ld,
-                                sideCode: match.sideCode
-                            };
-                        } else {
-                            if (ld.linkId) {
-                                missingLinkIds.push(ld.linkId);
-                            }
-                            return null
+            return assetsWithLinkData.map(asset => {
+                const filteredLinkData = asset.linkData.map(ld => {
+                    const match = matchedLinks.find(link => link.linkId === ld.linkId);
+                    if (match) {
+                        return {
+                            ...ld,
+                            sideCode: match.sideCode
+                        };
+                    } else {
+                        if (ld.linkId) {
+                            missingLinkIds.push(ld.linkId);
                         }
-                    })
+                        return null
+                    }
+                })
                     .filter(ld => ld !== null);
 
                 return {
@@ -238,10 +247,9 @@ export class LinearAssetHandler extends AssetHandler {
     };
 
 
-    override async saveNewAssets(asset_type_id: number, newAssets: VelhoAsset[]) {
-        const newLinearAssets = newAssets as VelhoLinearAsset[];
+    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
 
-        if (newLinearAssets.length === 0) {
+        if (newAssets.length === 0) {
             console.log("No assets to save.")
             return
         }
@@ -253,8 +261,8 @@ export class LinearAssetHandler extends AssetHandler {
             await client.connect();
 
             await client.query('BEGIN');
-            const insertPromises = newLinearAssets.map((asset) => {
-                (asset.linkData || []).map(async (data) => {
+            const insertPromises = newAssets.map((assetWithLinkData) => {
+                (assetWithLinkData.linkData || []).map(async (linkData) => {
                     const insertSql = `
                     WITH asset_insert AS (
                         INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code)
@@ -271,14 +279,14 @@ export class LinearAssetHandler extends AssetHandler {
                 `;
 
                     await client.query(insertSql, [
-                        asset.oid,
+                        assetWithLinkData.asset.oid,
                         asset_type_id,
                         'Tievelho-import',
-                        data.municipalityCode,
-                        data.mValue,
-                        data.mValueEnd,
-                        data.linkId,
-                        data.sideCode,
+                        linkData.municipalityCode,
+                        linkData.mValue,
+                        linkData.mValueEnd,
+                        linkData.linkId,
+                        linkData.sideCode,
                         timeStamp,
                         1 // normal link interface
                     ]);
@@ -297,7 +305,7 @@ export class LinearAssetHandler extends AssetHandler {
     };
 
     //TODO implement update for linears when there are asset types to update
-    updateAssets = async (assetsToUpdate: VelhoAsset[]) => {
+    updateAssets = async (assetsToUpdate: AssetWithLinkData[]) => {
         return
     }
 }
