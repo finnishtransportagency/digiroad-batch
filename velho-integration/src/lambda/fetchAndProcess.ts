@@ -4,6 +4,8 @@ import { Agent, setGlobalDispatcher } from 'undici';
 import { PointAssetHandler } from "./pointAssetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
 import { PavementHandler } from "./pavementHandler";
+import { TrafficSignHandler } from "./trafficSignHandler";
+
 
 const agent = new Agent({
     connect: {
@@ -68,7 +70,9 @@ const fetchMunicipalities = async (ely: string): Promise<number[]> => {
 const getAssetHandler = (asset_type_id: number, asset_type: string) => {
     if (asset_type_id === 110) {
         return new PavementHandler
-    } else if (asset_type === 'Point') {
+    } else if (asset_type_id === 300) {
+        return new TrafficSignHandler
+    }else if (asset_type === 'Point') {
         return new PointAssetHandler
     } else {
         return new LinearAssetHandler
