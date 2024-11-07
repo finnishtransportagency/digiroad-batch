@@ -1,11 +1,36 @@
 import { PointAssetHandler } from './pointAssetHandler';
-import { VelhoAsset } from "./assetHandler";
+import { VelhoPointAsset } from "./assetHandler";
 import { Track, VelhoRoadSide, SideCode, VelhoValidityDirection, ValidityDirectionRoadAddress } from './enumerations';
 
 
-export interface VelhoTrafficSignAsset extends VelhoAsset {
-    
-};
+export interface VelhoTrafficSignAsset extends VelhoPointAsset {
+    ominaisuudet: {
+        sijaintipoikkeus: string | null;
+        "kunto-ja-vauriotiedot": {
+            "varustevauriot": string[] | null;
+            "yleinen-kuntoluokka": string | null;
+            "arvioitu-jaljella-oleva-kayttoika": string | null;
+        };
+        "rakenteelliset-ominaisuudet": {
+            arvo: string | null;
+            koko: string | null;
+            suunta: string | null;
+            materiaali: string | null;
+            kalvotyyppi: string | null;
+            korkeusasema: string | null;
+            kiinnitystapa: string | null;
+        };
+        "toiminnalliset-ominaisuudet": {
+            lakinumero: string | null;
+            lisatietoja: string | null;
+            asetusnumero: string | null;
+            vaikutussuunta: string | null;
+            "voimassaolo-alkaa": string | null;
+            "voimassaolo-paattyy": string | null;
+        };
+    };
+    mitattugeometria: string | null;
+}
 
 export class TrafficSignHandler extends PointAssetHandler {
 
