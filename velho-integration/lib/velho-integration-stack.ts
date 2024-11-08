@@ -77,6 +77,7 @@ export class VelhoIntegrationStack extends Stack {
       { asset_name: "lit_road", asset_type_id: 100, asset_type: "Linear", paths: ["varusteet/valaistukset"] },
       { asset_name: "paved_road", asset_type_id: 110, asset_type: "Linear", paths: ["paallyste-ja-pintarakenne/sitomattomat-pintarakenteet", "paallyste-ja-pintarakenne/ladottavat-pintarakenteet", "paallyste-ja-pintarakenne/sidotut-paallysrakenteet", "paallyste-ja-pintarakenne/pintaukset", "paallyste-ja-pintarakenne/muut-pintarakenteet"] },
       { asset_name: "pedestrian_crossing", asset_type_id: 200, asset_type: "Point", paths: ["kohdepisteet-ja-valit/suojatiet"] },
+      { asset_name: "traffic_sign", asset_type_id: 300, asset_type: "Point", paths: ["varusteet/liikennemerkit"] }
     ];
 
     let chain: Chain | undefined = undefined;
