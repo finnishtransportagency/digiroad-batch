@@ -1,5 +1,5 @@
 import { getClient } from "./fetchAndProcess";
-import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
+import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData } from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
 import { retryTimeout } from "./utils";
 
@@ -144,7 +144,7 @@ export class LinearAssetHandler extends AssetHandler {
                         mValueEnd: link.m_arvo_loppu,
                         municipalityCode: link.kuntakoodi
                     }));
-            
+
                 return {
                     asset: asset,
                     linkData: matchedLinkData

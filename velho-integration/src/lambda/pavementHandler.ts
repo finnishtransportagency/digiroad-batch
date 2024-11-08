@@ -1,7 +1,7 @@
 import { VelhoAsset, VelhoLinearAsset } from "./assetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
 
-enum PavementClass {
+export enum PavementClass {
     Asphalt = 1, //asfaltti
     Cobblestone = 2, //kivi
     UnboundWearLayer = 3, //sitomaton kulutuskerros
@@ -9,13 +9,24 @@ enum PavementClass {
     Unknown = 99 //päällystetty, tyyppi tuntematon
 }
 
+export interface VelhoPavementAsset extends VelhoLinearAsset {
+    ominaisuudet?: {
+        materiaali?: string;
+        'pintauksen-tyyppi'?: string;
+        uusiomateriaali?: string;
+        tyyppi?: string;
+        'paallysteen-tyyppi'?: string;
+        runkomateriaali?: string;
+    }
+}
+
 export class PavementHandler extends LinearAssetHandler {
 
     // the original velho source of each pavement is necessary for correct mappings and filterings
-    private sourceByOid: { [oid: string]: string } = {};
+    sourceByOid: { [oid: string]: string } = {};
 
     // pavements mapped by oid to digiroad pavement types
-    private pavementByOid: { [oid: string]: PavementClass } = {}
+    pavementByOid: { [oid: string]: PavementClass } = {}
 
     override fetchSource = async (token: string, ely: string, paths: string[]): Promise<VelhoAsset[]> => {
         const allVelhoAssets = await Promise.all(
@@ -30,7 +41,7 @@ export class PavementHandler extends LinearAssetHandler {
         return allVelhoAssets.flat();
     }
 
-    private filterByPavementType = (srcData: VelhoAsset[]): VelhoAsset[] => {
+    filterByPavementType = (srcData: VelhoPavementAsset[]): VelhoPavementAsset[] => {
         const asphaltSources = ['muu-materiaali/mm04', 'paallystetyyppi/pt01', 'paallystetyyppi/pt02', 'paallystetyyppi/pt03', 'paallystetyyppi/pt04',
             'paallystetyyppi/pt08', 'paallystetyyppi/pt09', 'paallystetyyppi/pt10', 'paallystetyyppi/pt11', 'paallystetyyppi/pt12', 'paallystetyyppi/pt13',
             'paallystetyyppi/pt14', 'paallystetyyppi/pt15', 'paallystetyyppi/pt16', 'paallystetyyppi/pt17', 'paallystetyyppi/pt18'
@@ -65,9 +76,9 @@ export class PavementHandler extends LinearAssetHandler {
                     break
                 case 'pintaukset':
                     if (s.ominaisuudet?.['pintauksen-tyyppi'] && otherSources.includes(s.ominaisuudet['pintauksen-tyyppi'])) {
-                        this.pavementByOid[s.oid] = PavementClass.Unknown
+                        this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
                     } else if (s.ominaisuudet?.uusiomateriaali && otherSources.includes(s.ominaisuudet?.uusiomateriaali)) {
-                        this.pavementByOid[s.oid] = PavementClass.Unknown
+                        this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
                     }
                     break
                 case 'sidotut-paallysrakenteet':
@@ -77,13 +88,15 @@ export class PavementHandler extends LinearAssetHandler {
                         } else if (otherSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
                             this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
                         } else if (unknownTypeSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
-                            PavementClass.Unknown
+                            this.pavementByOid[s.oid] = PavementClass.Unknown
                         }
                     }
+                    break
                 case 'sitomattomat-pintarakenteet':
                     if (s.ominaisuudet?.runkomateriaali && unboundSources.includes(s.ominaisuudet.runkomateriaali)) {
                         this.pavementByOid[s.oid] = PavementClass.UnboundWearLayer
                     }
+                    break
                 default:
                     throw new Error('unrecognized pavement source')
             }
@@ -101,10 +114,10 @@ export class PavementHandler extends LinearAssetHandler {
      * @param asset_name asset_name as defined in lambda
      * @returns 
      */
-    override filterUnnecessary(srcData: VelhoLinearAsset[]): VelhoLinearAsset[] {
+    override filterUnnecessary(srcData: VelhoPavementAsset[]): VelhoPavementAsset[] {
         const mainLanes = ['kaista-numerointi/kanu11', 'kaista-numerointi/kanu21', 'kaista-numerointi/kanu31']
         const mainLanesFromOneSide = ['kaista-numerointi/kanu11', 'kaista-numerointi/kanu31']
-        const srcWithValidStatus = super.filterUnnecessary(srcData) as VelhoLinearAsset[];
+        const srcWithValidStatus = super.filterUnnecessary(srcData) as VelhoPavementAsset[];
         const necessaryAssets = srcWithValidStatus.filter(s => {
             if (s.sijaintitarkenne.ajoradat && s.sijaintitarkenne.ajoradat.length === 1 && s.sijaintitarkenne.ajoradat[0] === 'ajorata/ajr0') {
                 return !s.sijaintitarkenne.kaistat || s.sijaintitarkenne.kaistat.length === 0 || s.sijaintitarkenne.kaistat.some(lane => mainLanesFromOneSide.includes(lane))
