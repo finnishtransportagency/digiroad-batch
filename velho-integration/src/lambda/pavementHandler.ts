@@ -1,4 +1,5 @@
-import { VelhoAsset, VelhoLinearAsset } from "./assetHandler";
+import { AssetWithLinkData, VelhoAsset, VelhoLinearAsset } from "./assetHandler";
+import { getClient } from "./fetchAndProcess";
 import { LinearAssetHandler } from "./linearAssetHandler";
 
 export enum PavementClass {
@@ -127,4 +128,100 @@ export class PavementHandler extends LinearAssetHandler {
         })
         return this.filterByPavementType(necessaryAssets)
     };
+
+    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
+
+        if (newAssets.length === 0) {
+            console.log("No assets to save.");
+            return;
+        }
+
+        const client = await getClient();
+        const timeStamp = Date.now() - (Date.now() % (24 * 60 * 60 * 1000)) - (5 * 60 * 60 * 1000);
+
+        try {
+            await client.connect();
+            await client.query('BEGIN');
+
+            // read property id and enumerated value ids once instead of subquerying them for every asset
+            const propertyResult = await client.query(
+                `SELECT id as property_id 
+                 FROM property 
+                 WHERE asset_type_id = $1 AND public_id = 'paallysteluokka'`,
+                [asset_type_id]
+            );
+
+            const propertyId = propertyResult.rows[0]?.property_id;
+            if (!propertyId) {
+                throw new Error('Property id not found.');
+            }
+
+            const enumeratedValueResult = await client.query(
+                `SELECT id, value 
+                 FROM enumerated_value 
+                 WHERE property_id = $1`,
+                [propertyId]
+            );
+
+            const enumeratedValueMap = new Map<number, number>();
+            enumeratedValueResult.rows.forEach(row => {
+                enumeratedValueMap.set(Number(row.value), Number(row.id));
+            });
+
+            const insertPromises = newAssets.map((assetWithLinkData) => {
+                return Promise.all((assetWithLinkData.linkData || []).map(async (linkData) => {
+                    const pavementType = this.pavementByOid[assetWithLinkData.asset.oid];
+                    const enumeratedValueId = enumeratedValueMap.get(pavementType);
+                    if (!enumeratedValueId) {
+                        throw new Error(`No enumerated value ID found for value: ${pavementType}`);
+                    }
+
+                    const insertSql = `
+                        WITH asset_insert AS (
+                            INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code)
+                            VALUES (nextval('primary_key_seq'), $1, $2, $3, current_timestamp, $4)
+                            RETURNING id
+                        ),
+                        position_insert AS (
+                            INSERT INTO lrm_position (id, start_measure, end_measure, link_id, side_code, adjusted_timestamp, link_source, modified_date)
+                            VALUES (nextval('lrm_position_primary_key_seq'), $5, $6, $7, $8, $9, $10, current_timestamp)
+                            RETURNING id
+                        ),
+                        asset_link_insert AS (
+                            INSERT INTO asset_link (asset_id, position_id)
+                            VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert))
+                            RETURNING asset_id
+                        )
+                        INSERT INTO single_choice_value (asset_id, enumerated_value_id, property_id, modified_date, modified_by)
+                        VALUES ((SELECT asset_id FROM asset_link_insert), $11, $12, current_timestamp, $3);
+                    `;
+
+                    await client.query(insertSql, [
+                        assetWithLinkData.asset.oid,
+                        asset_type_id,
+                        'Tievelho-import',
+                        linkData.municipalityCode,
+                        linkData.mValue,
+                        linkData.mValueEnd,
+                        linkData.linkId,
+                        linkData.sideCode,
+                        timeStamp,
+                        1, //normal link interface
+                        enumeratedValueId,
+                        propertyId
+                    ]);
+                }));
+            });
+
+            await Promise.all(insertPromises);
+            await client.query('COMMIT');
+        } catch (err) {
+            console.error('err', err);
+            await client.query('ROLLBACK');
+            throw new Error('500 during saving');
+        } finally {
+            await client.end();
+        }
+    };
+
 }
