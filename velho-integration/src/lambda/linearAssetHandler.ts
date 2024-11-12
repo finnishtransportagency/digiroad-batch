@@ -304,8 +304,7 @@ export class LinearAssetHandler extends AssetHandler {
         }
     };
 
-    //TODO implement update for linears when there are asset types to update
-    updateAssets = async (assetsToUpdate: AssetWithLinkData[]) => {
+    override async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
         return
     }
 }

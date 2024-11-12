@@ -56,14 +56,14 @@ export interface VelhoLinearAsset extends VelhoAsset {
 }
 
 export interface AssetWithLinkData {
-        asset: VelhoAsset;
-        linkData: Array<{
-            linkId: string;
-            mValue: number;
-            mValueEnd?: number;
-            municipalityCode: number;
-            sideCode?: number;
-        }>;
+    asset: VelhoAsset;
+    linkData: Array<{
+        linkId: string;
+        mValue: number;
+        mValueEnd?: number;
+        municipalityCode: number;
+        sideCode?: number;
+    }>;
 }
 
 interface Kohdeluokka {
@@ -244,6 +244,6 @@ export abstract class AssetHandler {
 
     abstract saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]): Promise<void>;
 
-    abstract updateAssets(assetsToUpdate: AssetWithLinkData[]): Promise<void>;
+    abstract updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]): Promise<void>;
 
 }

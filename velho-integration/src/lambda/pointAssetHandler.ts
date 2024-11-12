@@ -144,10 +144,10 @@ export class PointAssetHandler extends AssetHandler {
             if (missingLinks.length > 0) {
                 console.log('Missing links in db:', missingLinks.join(','));
             }
-            return assetsWithLinkData.filter(s => 
+            return assetsWithLinkData.filter(s =>
                 s.linkData?.[0]?.linkId !== undefined && linkIds.some(linkid => s.linkData?.[0]?.linkId === linkid)
             );
-            
+
         } catch (err) {
             console.log('error during road link filtering', err)
         } finally {
@@ -211,7 +211,7 @@ export class PointAssetHandler extends AssetHandler {
         }
     };
 
-    override async updateAssets(assetsToUpdate: AssetWithLinkData[]) {
+    override async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
 
         if (this.updateAssets.length === 0) {
             console.log("No assets to update.")
@@ -244,13 +244,13 @@ export class PointAssetHandler extends AssetHandler {
                 );
             `;
 
-            await client.query(updateSql, [
-                assetWithLinkData.linkData?.[0]?.municipalityCode,
-                assetWithLinkData.asset.oid,
-                assetWithLinkData.linkData?.[0]?.mValue,
-                assetWithLinkData.linkData?.[0]?.linkId,
-                timeStamp
-            ]);
+                await client.query(updateSql, [
+                    assetWithLinkData.linkData?.[0]?.municipalityCode,
+                    assetWithLinkData.asset.oid,
+                    assetWithLinkData.linkData?.[0]?.mValue,
+                    assetWithLinkData.linkData?.[0]?.linkId,
+                    timeStamp
+                ]);
             });
 
             await Promise.all(updatePromises);

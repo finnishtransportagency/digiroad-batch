@@ -29,6 +29,8 @@ export class PavementHandler extends LinearAssetHandler {
     // pavements mapped by oid to digiroad pavement types
     pavementByOid: { [oid: string]: PavementClass } = {}
 
+    sourcesWithVersioning = ['ladottavat-pintarakenteet', 'muut-pintarakenteet']
+
     override fetchSource = async (token: string, ely: string, paths: string[]): Promise<VelhoAsset[]> => {
         const allVelhoAssets = await Promise.all(
             paths.map(async (path) => {
@@ -219,6 +221,129 @@ export class PavementHandler extends LinearAssetHandler {
             console.error('err', err);
             await client.query('ROLLBACK');
             throw new Error('500 during saving');
+        } finally {
+            await client.end();
+        }
+    };
+
+    override async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
+
+        const assetsWithVersioning = assetsToUpdate.filter(a => this.sourcesWithVersioning.includes(this.sourceByOid[a.asset.oid]));
+
+        if (assetsWithVersioning.length !== assetsToUpdate.length) {
+            console.log('There were non-versioned assets in assets to update:', assetsToUpdate.filter(atu => !assetsWithVersioning.includes(atu)).map(a => a.asset.oid));
+        }
+
+        if (assetsWithVersioning.length === 0) {
+            console.log("No assets to update.");
+            return;
+        }
+
+        const client = await getClient();
+        const timeStamp = Date.now() - (Date.now() % (24 * 60 * 60 * 1000)) - (5 * 60 * 60 * 1000);
+
+        try {
+            await client.connect();
+            await client.query('BEGIN');
+
+            const propertyResult = await client.query(
+                `SELECT id as property_id 
+                 FROM property 
+                 WHERE asset_type_id = $1 AND public_id = 'paallysteluokka'`,
+                [asset_type_id]
+            );
+
+            const propertyId = propertyResult.rows[0]?.property_id;
+            if (!propertyId) {
+                throw new Error('Property id not found for the given asset type and public id.');
+            }
+
+            const enumeratedValuesResult = await client.query(
+                `SELECT id, value 
+                 FROM enumerated_value 
+                 WHERE property_id = $1`,
+                [propertyId]
+            );
+
+            const enumeratedValueMap = new Map<number, number>();
+            enumeratedValuesResult.rows.forEach(row => {
+                enumeratedValueMap.set(Number(row.value), Number(row.id));
+            });
+
+            const oidsToExpire = assetsWithVersioning.map(asset => asset.asset.oid);
+
+            const expiredAssetsSql = `
+                WITH expired_assets AS (
+                    UPDATE asset
+                    SET valid_to = current_timestamp, modified_by = 'Tievelho-update', modified_date = current_timestamp
+                    WHERE external_id = ANY($1::text[])
+                    RETURNING external_id, created_by, created_date
+                )
+                SELECT external_id, created_by, created_date FROM expired_assets;
+            `;
+            const expiredAssetsResult = await client.query(expiredAssetsSql, [oidsToExpire]);
+
+            const originalCreationData = new Map<string, { created_by: string; created_date: Date }>();
+            expiredAssetsResult.rows.forEach(row => {
+                originalCreationData.set(row.external_id, { created_by: row.created_by, created_date: row.created_date });
+            });
+
+            const insertPromises = assetsWithVersioning.map(assetWithLinkData => {
+                return Promise.all((assetWithLinkData.linkData || []).map(async (linkData) => {
+                    const pavementType = this.pavementByOid[assetWithLinkData.asset.oid];
+                    const enumeratedValueId = enumeratedValueMap.get(pavementType);
+                    if (!enumeratedValueId) {
+                        throw new Error(`No enumerated value id found for value: ${pavementType}`);
+                    }
+
+                    const { created_by, created_date } = originalCreationData.get(assetWithLinkData.asset.oid) || {
+                        created_by: 'Tievelho-import',
+                        created_date: new Date()
+                    };
+
+                    const insertSql = `
+                        WITH asset_insert AS (
+                            INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, modified_by, modified_date, municipality_code)
+                            VALUES (nextval('primary_key_seq'), $1, $2, $3, $4, 'Tievelho-update', current_timestamp, $5)
+                            RETURNING id
+                        ),
+                        position_insert AS (
+                            INSERT INTO lrm_position (id, start_measure, end_measure, link_id, side_code, adjusted_timestamp, modified_date)
+                            VALUES (nextval('lrm_position_primary_key_seq'), $6, $7, $8, $9, $10, current_timestamp)
+                            RETURNING id
+                        ),
+                        asset_link_insert AS (
+                            INSERT INTO asset_link (asset_id, position_id)
+                            VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert))
+                            RETURNING asset_id
+                        )
+                        INSERT INTO single_choice_value (asset_id, enumerated_value_id, property_id, modified_date)
+                        VALUES ((SELECT asset_id FROM asset_link_insert), $11, $12, current_timestamp);
+                    `;
+
+                    await client.query(insertSql, [
+                        assetWithLinkData.asset.oid,
+                        asset_type_id,
+                        created_by,
+                        created_date,
+                        linkData.municipalityCode,
+                        linkData.mValue,
+                        linkData.mValueEnd,
+                        linkData.linkId,
+                        linkData.sideCode,
+                        timeStamp,
+                        enumeratedValueId,
+                        propertyId
+                    ]);
+                }));
+            });
+
+            await Promise.all(insertPromises);
+            await client.query('COMMIT');
+        } catch (err) {
+            console.error('Error:', err);
+            await client.query('ROLLBACK');
+            throw new Error('500: Transaction failed');
         } finally {
             await client.end();
         }
