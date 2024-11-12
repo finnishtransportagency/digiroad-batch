@@ -32,7 +32,7 @@ export class VelhoIntegrationStack extends Stack {
       vpc,
       vpcSubnets,
       runtime: Runtime.NODEJS_20_X,
-      timeout: Duration.seconds(600),
+      timeout: Duration.seconds(900),
       memorySize: 1024,
       entry: './src/lambda/fetchAndProcess.ts',
       handler: 'handler',
