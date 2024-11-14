@@ -1,4 +1,4 @@
-import { PointAssetHandler } from './pointAssetHandler';
+import { PointAssetHandler } from "./pointAssetHandler";
 import { VelhoPointAsset } from "./assetHandler";
 import { Track, VelhoRoadSide, SideCode, VelhoValidityDirection, ValidityDirectionRoadAddress } from './enumerations';
 
@@ -33,6 +33,21 @@ export interface VelhoTrafficSignAsset extends VelhoPointAsset {
 }
 
 export class TrafficSignHandler extends PointAssetHandler {
+
+    override filterUnnecessary(srcData: VelhoTrafficSignAsset[]): VelhoTrafficSignAsset[] {
+        return srcData.filter(src => {
+            const tiekohteenTilaFilter = !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03'
+            const sijaintiPoikkeusFilter = src.ominaisuudet.sijaintipoikkeus != 'sijaintipoikkeus/sp01' && src.ominaisuudet.sijaintipoikkeus != 'sijaintipoikkeus/sp02'
+            const validityDirectionFilter = src.ominaisuudet['toiminnalliset-ominaisuudet'].vaikutussuunta != "liikennemerkki-vaikutussuunta/liivasu03"
+            const sideFilter = (
+                src.sijaintitarkenne?.puoli === "puoli/p01" || 
+                src.sijaintitarkenne?.puoli === "puoli/p02" || 
+                (src.sijaintitarkenne?.puoli === "puoli/p03" && src.ominaisuudet?.['rakenteelliset-ominaisuudet']?.suunta != null)
+              );
+
+            return tiekohteenTilaFilter && sijaintiPoikkeusFilter && validityDirectionFilter && sideFilter;
+        })
+    }
 
     calculateTrafficSignValidityDirection(roadAddressSideCode: SideCode, velhoAssetRoadSide: VelhoRoadSide,
         velhoAssetValidityDirection: VelhoValidityDirection): SideCode {

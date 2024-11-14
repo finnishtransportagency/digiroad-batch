@@ -18,6 +18,7 @@ export interface VelhoAsset {
     sijaintitarkenne: {
         ajoradat: string[];
         kaistat?: string[];
+        puoli? : string;
     };
     oid: string;
     luotu: string;
