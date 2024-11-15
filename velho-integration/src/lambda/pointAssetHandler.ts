@@ -1,4 +1,4 @@
-import { getClient } from "./fetchAndProcess"
+import { getClient } from "./utils"
 import { AssetHandler, VelhoAsset, VelhoPointAsset, DbAsset, AssetWithLinkData } from "./assetHandler"
 
 export interface VKMResponseForPoint {

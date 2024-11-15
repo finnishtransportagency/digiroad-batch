@@ -1,4 +1,4 @@
-import { getClient } from "./fetchAndProcess";
+import { getClient } from "./utils";
 import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
 import { retryTimeout } from "./utils";

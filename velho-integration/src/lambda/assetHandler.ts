@@ -1,4 +1,4 @@
-import { getClient, getVelhoBaseUrl } from "./fetchAndProcess"
+import { getClient, getVelhoBaseUrl } from "./utils"
 
 export interface DbAsset {
     id: number
