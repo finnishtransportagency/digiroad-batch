@@ -127,7 +127,7 @@ export class LinearAssetHandler extends AssetHandler {
                     tunniste: c.tunniste, palautusarvot: '4,6', valihaku: "true"
                 }));
                 const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-                const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 5, 5000);
+                const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 10, 5000);
 
                 return data.features
                     .filter(f => this.isValidVKMFeature(f))
@@ -164,7 +164,7 @@ export class LinearAssetHandler extends AssetHandler {
                     valihaku: true
                 }));
                 const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-                const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 5, 5000);
+                const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 10, 5000);
                 return data.features
                     .filter(f => this.isValidVKMFeature(f))
                     .map(f => {
