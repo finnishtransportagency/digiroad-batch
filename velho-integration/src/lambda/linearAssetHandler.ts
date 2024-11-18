@@ -1,7 +1,7 @@
 import { getClient } from "./fetchAndProcess";
 import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
-import { retryTimeout, timer} from "./utils";
+import {chunkData, retryTimeout, timer} from "./utils";
 
 export interface ValidVKMFeature {
     properties: {
@@ -47,111 +47,47 @@ export class LinearAssetHandler extends AssetHandler {
         };
     }
 
-    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
-        const sourceLinearAssets = srcData as VelhoLinearAsset[]
-        const isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
-            return !('virheet' in feature.properties)
+
+    private isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
+        return !('virheet' in feature.properties)
+    }
+    
+    private fetchVKM = async (body: string,vkmApiKey): Promise<VKMResponseForRoadAddress> => {
+        const begin = performance.now();
+        const response= await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-API-KEY': `${vkmApiKey}`
+            },
+            body: `json=${body}`,
+        })
+        const duration = performance.now() - begin;
+        console.log("By using this",body)
+        console.log(`Call to fetchVKM call took: ${(duration / 1000).toFixed(4)} s.`)
+        if (!response.ok) {
+            throw new Error(`Error: ${response.statusText}`);
         }
 
-        const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
-            const R: T[][] = [];
-            for (let i = 0, len = array.length; i < len; i += chunkSize) {
-                R.push(array.slice(i, i + chunkSize));
-            }
-            return R;
-        };
+        const vkmResponse: VKMResponseForRoadAddress = await response.json();
 
-        const fetchVKM = async (body: string): Promise<VKMResponseForRoadAddress> => {
-            console.log("By using this",body)
-            const response= await timer("fetchVKM call", async () => {
-                return await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'X-API-KEY': `${vkmApiKey}`
-                    },
-                    body: `json=${body}`,
-                })
-            })
-            if (!response.ok) {
-                throw new Error(`Error: ${response.statusText}`);
-            }
+        vkmResponse.features = vkmResponse.features.filter(f => this.isValidVKMFeature(f))
 
-            const vkmResponse: VKMResponseForRoadAddress = await response.json();
-
-            vkmResponse.features = vkmResponse.features.filter(f => isValidVKMFeature(f))
-
-            return vkmResponse
-        };
-
+        return vkmResponse
+    };
+    
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
+        const sourceLinearAssets = srcData as VelhoLinearAsset[]
         if (sourceLinearAssets.length === 0) {
             console.log("No velho assets to fetch roadlinks for")
             return []
         }
-
         try {
             const batchSize = 20
-            const firstResults = await timer("firstResults tooks", async () => {
-                const chunkedVelhoAssets = chunkData(sourceLinearAssets, 50);
-                const firstResults: LinkData[] = []
-                for (let i = 0; i < chunkedVelhoAssets.length; i += batchSize) {
-                    const batch = chunkedVelhoAssets.slice(i, i + batchSize)
-                    const batchPromises = batch.map(async (chunk) => {
-                        const locationAndReturnValue = chunk.map(c => ({
-                            tie: c.alkusijainti?.tie,
-                            osa: c.alkusijainti?.osa,
-                            etaisyys: c.alkusijainti?.etaisyys,
-                            osa_loppu: c.loppusijainti?.osa,
-                            etaisyys_loppu: c.loppusijainti?.etaisyys,
-                            tunniste: c.oid,
-                            palautusarvot: '4,6',
-                            valihaku: true
-                        }));
-                        const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-                        const data = await retryTimeout(async () => await fetchVKM(encodedBody), 3, 5000);
-                        return data.features
-                            .filter(f => isValidVKMFeature(f))
-                            .map(f => {
-                                const originalAsset = locationAndReturnValue.find(a => a.tunniste === f.properties.tunniste);
-                                return {
-                                    ...f.properties,
-                                    tie: originalAsset?.tie
-                                };
-                            });
-                    });
-                    const batchResults = (await Promise.all(batchPromises)).flat();
-                    firstResults.push(...batchResults);
-                }
-                return firstResults;
-            })
+            const firstResults = await this.firstResult(sourceLinearAssets, batchSize,vkmApiKey);
             console.log(`fetched ${firstResults.length} start and end links from vkm`)
-            const secondResultsIndexed= await   timer("calculateDiff", async () => {
-                const chunkedLinkData = chunkData(firstResults, 50)
-                const secondResultsIndexed: { [index: string]: LinkData[] } = {};
-                for (let i = 0; i < chunkedLinkData.length; i += batchSize) {
-                    const batch = chunkedLinkData.slice(i, i + batchSize)
-                    const batchPromises = batch.map(async chunk => {
-                        const locationAndReturnValue = chunk.map(c => ({
-                            tie: c.tie, link_id: c.link_id, link_id_loppu: c.link_id_loppu,
-                            tunniste: c.tunniste, palautusarvot: '4,6', valihaku: "true"
-                        }));
-                        const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
-                        const data = await retryTimeout(async () => await fetchVKM(encodedBody), 3, 5000);
-
-                        return data.features
-                            .filter(f => isValidVKMFeature(f))
-                            .map(f => ({...f.properties, tie: undefined}))
-                    })
-                    const batchResults = (await Promise.all(batchPromises)).flat()
-
-                    batchResults.forEach(a => {
-                        if (secondResultsIndexed[a.tunniste] == undefined || secondResultsIndexed[a.tunniste].length == 0)
-                            secondResultsIndexed[a.tunniste] = [a]
-                        else secondResultsIndexed[a.tunniste].push(a)
-                    })
-                }
-               return secondResultsIndexed;
-            })
+            const secondResultsIndexed=  await this.secondResult(firstResults, batchSize,vkmApiKey);
+            
             console.log(`Start mapping ${sourceLinearAssets.length} to links ${Object.keys(secondResultsIndexed).length}`);
             // VelhoLinearAsset matches 0 to many LinkData
            const mappedResults = timer("mappedResults", ()=> {
@@ -177,6 +113,74 @@ export class LinearAssetHandler extends AssetHandler {
             console.error(err);
             throw new Error("Error during vkm fetch.")
         }
+    }
+
+    private async secondResult<T>(firstResults: LinkData[], batchSize: number,vkmApiKey: string) {
+        const begin = performance.now();
+        const chunkedLinkData = chunkData(firstResults, 50)
+        const secondResultsIndexed: { [index: string]: LinkData[] } = {};
+        for (let i = 0; i < chunkedLinkData.length; i += batchSize) {
+            const batch = chunkedLinkData.slice(i, i + batchSize)
+            const batchPromises = batch.map(async chunk => {
+                const locationAndReturnValue = chunk.map(c => ({
+                    tie: c.tie, link_id: c.link_id, link_id_loppu: c.link_id_loppu,
+                    tunniste: c.tunniste, palautusarvot: '4,6', valihaku: "true"
+                }));
+                const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
+                const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 5, 5000);
+
+                return data.features
+                    .filter(f => this.isValidVKMFeature(f))
+                    .map(f => ({...f.properties, tie: undefined}))
+            })
+            const batchResults = (await Promise.all(batchPromises)).flat()
+
+            batchResults.forEach(a => {
+                if (secondResultsIndexed[a.tunniste] == undefined || secondResultsIndexed[a.tunniste].length == 0)
+                    secondResultsIndexed[a.tunniste] = [a]
+                else secondResultsIndexed[a.tunniste].push(a)
+            })
+        }
+        const duration = performance.now() - begin;
+        console.log(`Call to secondResult call took: ${(duration / 1000).toFixed(4)} s.`)
+        return secondResultsIndexed;
+    }
+
+    private async firstResult<T>(sourceLinearAssets: VelhoLinearAsset[], batchSize: number,vkmApiKey: string) {
+        const begin = performance.now();
+        const chunkedVelhoAssets = chunkData(sourceLinearAssets, 50);
+        const firstResults: LinkData[] = []
+        for (let i = 0; i < chunkedVelhoAssets.length; i += batchSize) {
+            const batch = chunkedVelhoAssets.slice(i, i + batchSize)
+            const batchPromises = batch.map(async (chunk) => {
+                const locationAndReturnValue = chunk.map(c => ({
+                    tie: c.alkusijainti?.tie,
+                    osa: c.alkusijainti?.osa,
+                    etaisyys: c.alkusijainti?.etaisyys,
+                    osa_loppu: c.loppusijainti?.osa,
+                    etaisyys_loppu: c.loppusijainti?.etaisyys,
+                    tunniste: c.oid,
+                    palautusarvot: '4,6',
+                    valihaku: true
+                }));
+                const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
+                const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 5, 5000);
+                return data.features
+                    .filter(f => this.isValidVKMFeature(f))
+                    .map(f => {
+                        const originalAsset = locationAndReturnValue.find(a => a.tunniste === f.properties.tunniste);
+                        return {
+                            ...f.properties,
+                            tie: originalAsset?.tie
+                        };
+                    });
+            });
+            const batchResults = (await Promise.all(batchPromises)).flat();
+            firstResults.push(...batchResults);
+        }
+        const duration = performance.now() - begin;
+        console.log(`Call to firstResult call took: ${(duration / 1000).toFixed(4)} s.`)
+        return firstResults;
     }
 
     override async filterRoadLinks(assetsWithLinkData: AssetWithLinkData[]): Promise<AssetWithLinkData[]> {
