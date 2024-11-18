@@ -4,6 +4,7 @@ import { Agent, setGlobalDispatcher } from 'undici';
 import { PointAssetHandler } from "./pointAssetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
 import { PavementHandler } from "./pavementHandler";
+import {timer} from "./utils";
 
 const agent = new Agent({
     connect: {
@@ -83,28 +84,48 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     const vkmApiKey = await getVkmApiKey()
     if (!vkmApiKey) throw new Error("vkm api key is not defined")
     const authToken = await authenticate()
-    const srcData = await assetHandler.fetchSource(authToken, ely, paths)
+    const srcData = await timer("fetchSource", async () => {
+        return await assetHandler.fetchSource(authToken, ely, paths)
+    })
     console.log(`fetched ${srcData.length} assets from velho`)
-    const filteredSrc = assetHandler.filterUnnecessary(srcData)
+    const filteredSrc = await timer("filterUnnecessary", async () => {
+        return assetHandler.filterUnnecessary(srcData)
+    })
+    console.log(`fetched assets from velho filtered`)
     if (filteredSrc.length === 0) {
         console.log('No assets to process after filtering.')
         return
     }
     const municipalities = await fetchMunicipalities(ely)
     console.log(`municipalities to process: ${municipalities.join(',')}`)
-    const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
+    const currentData = await timer("fetchDestData", async () => {
+        return await assetHandler.fetchDestData(asset_type_id, municipalities)
+    })
     console.log(`fetched ${currentData.length} assets from digiroad`)
-    const { added, expired, updated, notTouched } = assetHandler.calculateDiff(filteredSrc, currentData)
+    const { added, expired, updated, notTouched }  = timer("calculateDiff", ()=> {
+        return assetHandler.calculateDiff(filteredSrc, currentData)
+    })
+    
     console.log(`assets left untouched: ${notTouched.length}`)
     console.log(`assets to expire: ${expired.length}`)
-    await assetHandler.expireAssets(expired)
+    //await assetHandler.expireAssets(expired)
     console.log(`assets to add: ${added.length}`)
-    const addedWithLinks = await assetHandler.getRoadLinks(added, vkmApiKey)
+    const addedWithLinks = await  timer("addedWithLinks", async () => {
+        return await assetHandler.getRoadLinks(added, vkmApiKey)
+    })
     console.log(`assets to update: ${updated.length}`)
-    const updatedWithLinks = await assetHandler.getRoadLinks(updated, vkmApiKey)
+    const updatedWithLinks= await timer("updatedWithLinks", async () => {
+        return await assetHandler.getRoadLinks(updated, vkmApiKey)
+    })
     console.log('road link data fetched')
-    const addedWithDigiroadLinks = await assetHandler.filterRoadLinks(addedWithLinks)
-    await assetHandler.saveNewAssets(asset_type_id, addedWithDigiroadLinks)
-    const updatedWithDigiroadLinks = await assetHandler.filterRoadLinks(updatedWithLinks)
-    await assetHandler.updateAssets(asset_type_id, updatedWithDigiroadLinks)
+    console.log('start saving')
+    const addedWithDigiroadLinks = await timer("addedWithDigiroadLinks",  async () => {
+        return await assetHandler.filterRoadLinks(addedWithLinks)
+    })
+    
+    const updatedWithDigiroadLinks =await  timer("updatedWithDigiroadLinks ", async () => {
+        return await assetHandler.filterRoadLinks(updatedWithLinks)
+    })
+    //await assetHandler.saveNewAssets(asset_type_id, addedWithDigiroadLinks)
+   // await assetHandler.updateAssets(asset_type_id, updatedWithDigiroadLinks)
 }

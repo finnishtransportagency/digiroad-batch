@@ -76,6 +76,13 @@ interface Kohdeluokka {
     }
 }
 
+export interface DiffResponce {
+    added: VelhoAsset[],
+    expired:  DbAsset[],
+    updated: VelhoAsset[],
+    notTouched:  DbAsset[]
+}
+
 export abstract class AssetHandler {
 
     abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]>;

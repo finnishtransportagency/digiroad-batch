@@ -27,3 +27,11 @@ export const retryTimeout = async <T>(fn: () => Promise<T>, retries = 3, delayTi
     }
     return retry(fn, timeoutTest, retries, delayTimeMs);
 };
+
+export const timer = <R>(operationName: string, operation: () => R): R => {
+    const begin = performance.now();
+    const result = operation();
+    const duration = performance.now() - begin;
+    console.log(`Call to ${operationName} took: ${(duration / 1000).toFixed(4)} s.`);
+    return result;
+};
