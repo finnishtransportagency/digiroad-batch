@@ -36,19 +36,21 @@ export class PointAssetHandler extends AssetHandler {
             return R;
         };
 
-        const fetchVKM = async (src: VelhoPointAsset[]) => {
-            const locationAndReturnValue = src.map(s => {
+        const fetchVKM = async (src: VelhoAsset[]) => {
+            const locationAndReturnValue = src.filter( a=> a.alkusijainti?.tie !=undefined).map(s => {
                 const roadways = s.sijaintitarkenne.ajoradat || [];
                 const roadwayNumbers = roadways.map(ajorata => ajorata.match(/\d+/)).filter(match => match !== null).map(match => match[0])
 
                 if (s.keskilinjageometria.type !== 'Point') throw "illegal geometry type for point asset"
 
-                // only add roadway parameter if exists
-                const params: { x: number, y: number, tunniste: string, palautusarvot: string, ajr?: string } = {
-                    x: s.keskilinjageometria.coordinates[0],
-                    y: s.keskilinjageometria.coordinates[1],
+                // add roadway parameter if exists
+                const params: {tie:number ,osa:number ,etaisyys:number,  tunniste: string, palautusarvot: string, ajr?: string, hallinnollinen_luokka } = {
+                    tie: s.alkusijainti?.tie as number,
+                    osa: s.alkusijainti?.osa as number,
+                    etaisyys: s.alkusijainti?.etaisyys as number,
                     tunniste: s.oid,
-                    palautusarvot: '4,6'
+                    palautusarvot: '4,6',
+                    hallinnollinen_luokka: '1'
                 };
 
                 if (roadwayNumbers.length > 0) {
