@@ -37,17 +37,17 @@ export class PointAssetHandler extends AssetHandler {
         };
 
         const fetchVKM = async (src: VelhoAsset[]) => {
-            const locationAndReturnValue = src.filter( a=> a.alkusijainti?.tie !=undefined).map(s => {
+            const locationAndReturnValue = (src  as VelhoPointAsset[]).filter( a=> a.sijainti?.tie !=undefined).map(s => {
                 const roadways = s.sijaintitarkenne.ajoradat || [];
                 const roadwayNumbers = roadways.map(ajorata => ajorata.match(/\d+/)).filter(match => match !== null).map(match => match[0])
 
                 if (s.keskilinjageometria.type !== 'Point') throw "illegal geometry type for point asset"
 
                 // add roadway parameter if exists
-                const params: {tie:number ,osa:number ,etaisyys:number,  tunniste: string, palautusarvot: string, ajr?: string, hallinnollinen_luokka } = {
-                    tie: s.alkusijainti?.tie as number,
-                    osa: s.alkusijainti?.osa as number,
-                    etaisyys: s.alkusijainti?.etaisyys as number,
+                const params: {tie:number ,osa:number ,etaisyys:number,  tunniste: string, palautusarvot: string, ajr?: string, hallinnollinen_luokka:string } = {
+                    tie: s.sijainti?.tie as number,
+                    osa: s.sijainti?.osa as number,
+                    etaisyys: s.sijainti?.etaisyys as number,
                     tunniste: s.oid,
                     palautusarvot: '4,6',
                     hallinnollinen_luokka: '1'
