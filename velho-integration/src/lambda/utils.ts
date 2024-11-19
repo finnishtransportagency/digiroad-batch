@@ -11,7 +11,6 @@ export const retry = async <T>(
         return Promise.reject(err);
     }
     return fn().catch((err: Error) => {
-        console.log('err', err);
         if (!retryIfTest || retryIfTest(err)) {
             console.log(`Retries left: ${retries}`);
             return delay(delayTimeMs).then(() => retry(fn, retryIfTest, retries - 1, delayTimeMs, err));
