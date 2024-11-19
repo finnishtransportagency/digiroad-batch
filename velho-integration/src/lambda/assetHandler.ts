@@ -17,27 +17,32 @@ export interface VelhoAsset {
     'sijainti-oid': string;
     sijaintitarkenne: {
         ajoradat: string[];
+        kaistat?: string[];
     };
     oid: string;
     luotu: string;
     muokattu: string;
     'tiekohteen-tila': string | null | undefined;
-    // for point asset
+
+}
+
+export interface VelhoPointAsset extends VelhoAsset {
     sijainti?: {
         osa: number;
         tie: number;
         etaisyys: number;
     } | null;
-    keskilinjageometria:
-    | {  // for point asset
+    keskilinjageometria: {
         coordinates: [number, number, number];
         type: "Point";
     }
-    | {  // for linear asset
+}
+
+export interface VelhoLinearAsset extends VelhoAsset {
+    keskilinjageometria: {
         coordinates: [[number, number, number][]];
         type: "MultiLinestring";
     };
-    // for linear asset
     alkusijainti?: {
         osa: number;
         tie: number;
@@ -50,24 +55,63 @@ export interface VelhoAsset {
     } | null;
 }
 
-export interface EnrichedVelhoAsset extends VelhoAsset {
+export interface AssetWithLinkData {
+    asset: VelhoAsset;
     linkData: Array<{
-        linkId?: string;
-        mValue?: number;
+        linkId: string;
+        mValue: number;
         mValueEnd?: number;
-        municipalityCode?: number;
+        municipalityCode: number;
         sideCode?: number;
     }>;
 }
 
+interface Kohdeluokka {
+    jaottelut: {
+        "alueet/ely": {
+            [ely: string]: {
+                polku: string
+            }
+        }
+    }
+}
+
 export abstract class AssetHandler {
 
-    abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<VelhoAsset[]>;
+    abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]>;
 
-    fetchSourceData = async (token: string, path: string) => {
+    abstract filterRoadLinks(src: AssetWithLinkData[]): Promise<AssetWithLinkData[]>;
+
+    private getElyPath = async (token: string, ely: string, path: string): Promise<string> => {
         const baseUrl = await getVelhoBaseUrl()
+        const response = await fetch(`${baseUrl}/kohdeluokka/${path}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error in list kohdeluokka! Status: ${response.status}`);
+        }
+
+        const data = await response.json() as Kohdeluokka
+        const elyKey = `ely/ely${ely}`;
+
+        const elyEntry = data.jaottelut["alueet/ely"][elyKey];
+
+        if (!elyEntry) {
+            throw new Error(`Ely ${ely} not found in list Kohdeluokka.`);
+        }
+
+        return elyEntry.polku;
+    }
+
+    fetchSourceFromPath = async (token: string, ely: string, path: string) => {
+        const baseUrl = await getVelhoBaseUrl()
+        const elyPath = await this.getElyPath(token, ely, path);
         try {
-            const response = await fetch(`${baseUrl}/${path}`, {
+            const response = await fetch(`${baseUrl}/${elyPath}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': 'Bearer ' + token,
@@ -87,6 +131,11 @@ export abstract class AssetHandler {
             console.log(err)
             return []
         }
+    }
+
+    // the default implementation when all velho assets come from one path
+    fetchSource = async (token: string, ely: string, paths: string[]) => {
+        return await this.fetchSourceFromPath(token, ely, paths[0])
     }
 
     fetchDestData = async (typeId: number, municipalities: number[]) => {
@@ -133,19 +182,20 @@ export abstract class AssetHandler {
         }
         throw '500: something weird happened'
     }
+    // exclude assets that have other state than built or unknown
+    filterUnnecessary(srcData: VelhoAsset[]): VelhoAsset[] {
+        return srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03')
+    }
 
-    calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => {
+    calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
 
-        // exclude assets that have other state than built or unknown 
-        const filteredSrc = srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03');
-
-        const preserved = currentData.filter(curr => filteredSrc.some(src => src.oid === curr.externalId));
-        const expired = currentData.filter(curr => !filteredSrc.some(src => src.oid === curr.externalId))
-        const added = filteredSrc.filter(src => !preserved.some(p => p.externalId === src.oid));
+        const preserved = currentData.filter(curr => srcData.some(src => src.oid === curr.externalId));
+        const expired = currentData.filter(curr => !srcData.some(src => src.oid === curr.externalId))
+        const added = srcData.filter(src => !preserved.some(p => p.externalId === src.oid));
 
         // asset is considered updated if velho source is modified later than either the created or modified date of the db asset
         const updatedExternalIds = preserved.filter(p => {
-            const correspondingSrcAsset = filteredSrc.find(src => src.oid === p.externalId);
+            const correspondingSrcAsset = srcData.find(src => src.oid === p.externalId);
             if (correspondingSrcAsset && correspondingSrcAsset.muokattu) {
                 const muokattuDate = new Date(correspondingSrcAsset.muokattu);
                 if (p.modifiedDate) {
@@ -156,7 +206,7 @@ export abstract class AssetHandler {
             }
             return false;
         }).map(u => u.externalId);
-        const updated = filteredSrc.filter(src => updatedExternalIds.includes(src.oid))
+        const updated = srcData.filter(src => updatedExternalIds.includes(src.oid))
         const notTouched = preserved.filter(p => !updatedExternalIds.includes(p.externalId));
 
         return { added: added, expired: expired, updated: updated, notTouched: notTouched }
@@ -191,5 +241,9 @@ export abstract class AssetHandler {
             await client.end();
         }
     };
+
+    abstract saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]): Promise<void>;
+
+    abstract updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]): Promise<void>;
 
 }

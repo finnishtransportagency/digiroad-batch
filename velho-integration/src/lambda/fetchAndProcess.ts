@@ -3,7 +3,8 @@ import { Client, ClientConfig } from 'pg';
 import { Agent, setGlobalDispatcher } from 'undici';
 import { PointAssetHandler } from "./pointAssetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
-import { VelhoAsset } from "./assetHandler";
+import { PavementHandler } from "./pavementHandler";
+import {timer} from "./utils";
 
 const agent = new Agent({
     connect: {
@@ -46,37 +47,6 @@ const authenticate = async () => {
     return data.access_token
 }
 
-const listKohdeluokka = async (token: string, target: string): Promise<{ [key: string]: string }> => {
-    const baseUrl = await getVelhoBaseUrl()
-    const response = await fetch(`${baseUrl}/${target}`, {
-        method: 'GET',
-        headers: {
-            'Authorization': 'Bearer ' + token,
-        },
-    });
-
-    if (!response.ok) {
-        throw new Error(`HTTP error in list kohdeluokka! Status: ${response.status}`);
-    }
-
-    interface Kohdeluokka {
-        jaottelut: {
-            "alueet/ely": {
-                [ely: string]: {
-                    polku: string
-                }
-            }
-        }
-    }
-
-    const data = await response.json() as Kohdeluokka
-    return Object.keys(data.jaottelut["alueet/ely"]).reduce((acc: any, val: string) => {
-        const ely = val.replace('ely/ely', '')
-        acc[ely] = data.jaottelut["alueet/ely"][val].polku
-        return acc
-    }, {})
-}
-
 const fetchMunicipalities = async (ely: string): Promise<number[]> => {
     const client = await getClient()
     try {
@@ -96,34 +66,58 @@ const fetchMunicipalities = async (ely: string): Promise<number[]> => {
     throw '500: something weird happened'
 }
 
-export const handler = async (event: { ely: string, asset_name: string, asset_type_id: number, asset_type: string, path: string }, ctx: any) => {
+const getAssetHandler = (asset_type_id: number, asset_type: string) => {
+    if (asset_type_id === 110) {
+        return new PavementHandler
+    } else if (asset_type === 'Point') {
+        return new PointAssetHandler
+    } else {
+        return new LinearAssetHandler
+    }
+}
+
+export const handler = async (event: { ely: string, asset_name: string, asset_type_id: number, asset_type: string, paths: string[] }, ctx: any) => {
     console.log(`Event: ${JSON.stringify(event, null, 2)}`);
 
-    const { ely, asset_name, asset_type_id, asset_type, path } = event;
-    const assetHandler = asset_type === 'Point' ? new PointAssetHandler : new LinearAssetHandler
+    const { ely, asset_name, asset_type_id, asset_type, paths } = event;
+    const assetHandler = getAssetHandler(asset_type_id, asset_type)
     const vkmApiKey = await getVkmApiKey()
     if (!vkmApiKey) throw new Error("vkm api key is not defined")
     const authToken = await authenticate()
-    const ely2polku = await listKohdeluokka(authToken, `kohdeluokka/${path}`)
-    if (!ely2polku[ely]) throw new Error("no path found for ely")
-    const srcData = await assetHandler.fetchSourceData(authToken, ely2polku[ely]) as VelhoAsset[]
+    const srcData = await assetHandler.fetchSource(authToken, ely, paths)
+  
     console.log(`fetched ${srcData.length} assets from velho`)
-    if (srcData.length === 0) return
+    const filteredSrc = timer("filterUnnecessary", () => {
+        return assetHandler.filterUnnecessary(srcData)
+    })
+    console.log(`fetched assets from velho filtered`)
+    if (filteredSrc.length === 0) {
+        console.log('No assets to process after filtering.')
+        return
+    }
     const municipalities = await fetchMunicipalities(ely)
     console.log(`municipalities to process: ${municipalities.join(',')}`)
     const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
+
     console.log(`fetched ${currentData.length} assets from digiroad`)
-    const { added, expired, updated, notTouched } = assetHandler.calculateDiff(srcData, currentData)
+    const { added, expired, updated, notTouched }  = timer("calculateDiff", ()=> {
+        return assetHandler.calculateDiff(filteredSrc, currentData)
+    })
+    
     console.log(`assets left untouched: ${notTouched.length}`)
     console.log(`assets to expire: ${expired.length}`)
     await assetHandler.expireAssets(expired)
     console.log(`assets to add: ${added.length}`)
     const addedWithLinks = await assetHandler.getRoadLinks(added, vkmApiKey)
+   
     console.log(`assets to update: ${updated.length}`)
-    const updatedWithLinks = await assetHandler.getRoadLinks(updated, vkmApiKey)
+    const updatedWithLinks= await assetHandler.getRoadLinks(updated, vkmApiKey)
+  
     console.log('road link data fetched')
+    console.log('start saving')
     const addedWithDigiroadLinks = await assetHandler.filterRoadLinks(addedWithLinks)
+    const updatedWithDigiroadLinks =await  assetHandler.filterRoadLinks(updatedWithLinks)
+   
     await assetHandler.saveNewAssets(asset_type_id, addedWithDigiroadLinks)
-    const updatedWithDigiroadLinks = await assetHandler.filterRoadLinks(updatedWithLinks)
-    await assetHandler.updateAssets(updatedWithDigiroadLinks)
+    await assetHandler.updateAssets(asset_type_id, updatedWithDigiroadLinks)
 }

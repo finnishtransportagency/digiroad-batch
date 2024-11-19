@@ -6,6 +6,7 @@
   },
   "scripts": {
     "build": "esbuild bin/velho-integration.ts --outdir=.build --platform=node",
+    "compile": "tsc",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk"

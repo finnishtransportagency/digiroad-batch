@@ -32,8 +32,8 @@ export class VelhoIntegrationStack extends Stack {
       vpc,
       vpcSubnets,
       runtime: Runtime.NODEJS_20_X,
-      timeout: Duration.seconds(600),
-      memorySize: 256,
+      timeout: Duration.seconds(900),
+      memorySize: 1024,
       entry: './src/lambda/fetchAndProcess.ts',
       handler: 'handler',
       bundling: {
@@ -74,8 +74,9 @@ export class VelhoIntegrationStack extends Stack {
     // states
     const ELYs = ["15", "13", "11", "10", "08", "05", "06", "01", "02"];
     const assets = [
-      { asset_name: "pedestrian_crossing", asset_type_id: 200, asset_type: "Point", path: "kohdepisteet-ja-valit/suojatiet" },
-      { asset_name: "lit_road", asset_type_id: 100, asset_type: "Linear", path: "varusteet/valaistukset" },
+      { asset_name: "lit_road", asset_type_id: 100, asset_type: "Linear", paths: ["varusteet/valaistukset"] },
+      { asset_name: "paved_road", asset_type_id: 110, asset_type: "Linear", paths: ["paallyste-ja-pintarakenne/sitomattomat-pintarakenteet", "paallyste-ja-pintarakenne/ladottavat-pintarakenteet", "paallyste-ja-pintarakenne/sidotut-paallysrakenteet", "paallyste-ja-pintarakenne/pintaukset", "paallyste-ja-pintarakenne/muut-pintarakenteet"] },
+      { asset_name: "pedestrian_crossing", asset_type_id: 200, asset_type: "Point", paths: ["kohdepisteet-ja-valit/suojatiet"] },
     ];
 
     let chain: Chain | undefined = undefined;
@@ -91,7 +92,7 @@ export class VelhoIntegrationStack extends Stack {
             asset_name: asset.asset_name,
             asset_type_id: asset.asset_type_id,
             asset_type: asset.asset_type,
-            path: asset.path,
+            paths: asset.paths,
           }),
         });
 
