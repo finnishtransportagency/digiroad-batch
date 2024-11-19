@@ -106,7 +106,7 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     
     console.log(`assets left untouched: ${notTouched.length}`)
     console.log(`assets to expire: ${expired.length}`)
-    //await assetHandler.expireAssets(expired)
+    await assetHandler.expireAssets(expired)
     console.log(`assets to add: ${added.length}`)
     const addedWithLinks = await assetHandler.getRoadLinks(added, vkmApiKey)
    
@@ -116,10 +116,8 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     console.log('road link data fetched')
     console.log('start saving')
     const addedWithDigiroadLinks = await assetHandler.filterRoadLinks(addedWithLinks)
-    
-    
     const updatedWithDigiroadLinks =await  assetHandler.filterRoadLinks(updatedWithLinks)
    
-    //await assetHandler.saveNewAssets(asset_type_id, addedWithDigiroadLinks)
-   // await assetHandler.updateAssets(asset_type_id, updatedWithDigiroadLinks)
+    await assetHandler.saveNewAssets(asset_type_id, addedWithDigiroadLinks)
+    await assetHandler.updateAssets(asset_type_id, updatedWithDigiroadLinks)
 }
