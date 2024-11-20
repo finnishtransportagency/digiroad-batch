@@ -52,7 +52,7 @@ export class LinearAssetHandler extends AssetHandler {
         return !('virheet' in feature.properties)
     }
     
-    private fetchVKM = async (body: string,vkmApiKey): Promise<VKMResponseForRoadAddress> => {
+    private fetchVKM = async (body: string,vkmApiKey:string): Promise<VKMResponseForRoadAddress> => {
         const begin = performance.now();
         const response= await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
             method: 'POST',
