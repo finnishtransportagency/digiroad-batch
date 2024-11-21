@@ -2,6 +2,7 @@ import { getClient } from "./fetchAndProcess";
 import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
 import {chunkData, retryTimeout, timer} from "./utils";
+import {json} from "stream/consumers";
 
 export interface ValidVKMFeature {
     properties: {
@@ -94,9 +95,12 @@ export class LinearAssetHandler extends AssetHandler {
                 const mappedResults: AssetWithLinkData[] = []
                 sourceLinearAssets.forEach(asset => {
                     if (secondResultsIndexed[asset.oid] != undefined && secondResultsIndexed[asset.oid].length !=0) {
+                        const linkInfo = secondResultsIndexed[asset.oid]
+                        //console.log('for oid: '+asset.oid)
+                        //console.log(linkInfo.map(a=>JSON.stringify(a)).join(","))
                         mappedResults.push({
                             asset: asset,
-                            linkData: secondResultsIndexed[asset.oid].map(link => ({
+                            linkData: linkInfo.map(link => ({
                                 linkId: link.link_id,
                                 mValue: link.m_arvo,
                                 mValueEnd: link.m_arvo_loppu,
@@ -159,7 +163,7 @@ export class LinearAssetHandler extends AssetHandler {
                     etaisyys: c.alkusijainti?.etaisyys,
                     osa_loppu: c.loppusijainti?.osa,
                     etaisyys_loppu: c.loppusijainti?.etaisyys,
-                    tunniste: c.oid,
+                    tunniste: c.oid, // TODO lisaa ajorata tänne
                     palautusarvot: '4,6',
                     valihaku: true
                 }));

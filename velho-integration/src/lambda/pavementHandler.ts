@@ -18,6 +18,7 @@ export interface VelhoPavementAsset extends VelhoLinearAsset {
         tyyppi?: string;
         'paallysteen-tyyppi'?: string;
         runkomateriaali?: string;
+        'velhoSource'?:string;
     }
 }
 
@@ -36,6 +37,7 @@ export class PavementHandler extends LinearAssetHandler {
             paths.map(async (path) => {
                 const srcData: VelhoAsset[] = await this.fetchSourceFromPath(token, ely, path);
                 srcData.forEach((s) => {
+                    (s as VelhoPavementAsset ).ominaisuudet.velhoSource =path.replace('paallyste-ja-pintarakenne/', '');
                     this.sourceByOid[s.oid] = path.replace('paallyste-ja-pintarakenne/', '');
                 });
                 return srcData;

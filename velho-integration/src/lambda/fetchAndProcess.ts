@@ -3,8 +3,9 @@ import { Client, ClientConfig } from 'pg';
 import { Agent, setGlobalDispatcher } from 'undici';
 import { PointAssetHandler } from "./pointAssetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
-import { PavementHandler } from "./pavementHandler";
+import {PavementHandler, VelhoPavementAsset} from "./pavementHandler";
 import {timer} from "./utils";
+import {AssetWithLinkData, VelhoAsset} from "./assetHandler";
 
 const agent = new Agent({
     connect: {
@@ -22,7 +23,7 @@ const getVkmApiKey = async () => (await ssm.send(new GetParameterCommand({ Name:
 export const getClient = async (): Promise<Client> => {
     const config: ClientConfig = {
         user: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.username` }))).Parameter?.Value,
-        host: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.host` }))).Parameter?.Value,
+        host: `velhotestdb.c8sq5c8rj3gu.eu-west-1.rds.amazonaws.com`,//(await ssm.send(new GetParameterCommand({ Name: `velhotestdb.c8sq5c8rj3gu.eu-west-1.rds.amazonaws.com` }))).Parameter?.Value,
         database: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.databasename` }))).Parameter?.Value,
         password: (await ssm.send(new GetParameterCommand({ Name: `/${process.env.ENV}/bonecp.password`, WithDecryption: true }))).Parameter?.Value,
         port: 5432,
@@ -95,6 +96,16 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
         console.log('No assets to process after filtering.')
         return
     }
+    const occurrences = {};
+    filteredSrc.map(a => a.oid).forEach(a=> {
+        occurrences[a] = (occurrences[a] || 0) + 1;
+    })
+    Object.keys(occurrences).forEach(oid => {
+        if (occurrences[oid] > 1) {
+            console.log(`Duplicate oid found: ${oid} appears ${occurrences[oid]} times.`);
+        }
+    });
+    
     const municipalities = await fetchMunicipalities(ely)
     console.log(`municipalities to process: ${municipalities.join(',')}`)
     const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
@@ -106,7 +117,6 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     
     console.log(`assets left untouched: ${notTouched.length}`)
     console.log(`assets to expire: ${expired.length}`)
-    await assetHandler.expireAssets(expired)
     console.log(`assets to add: ${added.length}`)
     const addedWithLinks = await assetHandler.getRoadLinks(added, vkmApiKey)
    
@@ -115,9 +125,31 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
   
     console.log('road link data fetched')
     console.log('start saving')
+
+   
     const addedWithDigiroadLinks = await assetHandler.filterRoadLinks(addedWithLinks)
     const updatedWithDigiroadLinks =await  assetHandler.filterRoadLinks(updatedWithLinks)
-   
-    await assetHandler.saveNewAssets(asset_type_id, addedWithDigiroadLinks)
-    await assetHandler.updateAssets(asset_type_id, updatedWithDigiroadLinks)
+    console.log('start saving added,')
+
+    const assetPerLink:{[p: string]:   VelhoAsset[]} = {};
+
+    addedWithDigiroadLinks.forEach(a => {
+        a.linkData.forEach(a1=> {
+            if (assetPerLink[a1.linkId] == undefined || assetPerLink[a1.linkId].length == 0)
+                assetPerLink[a1.linkId] = [a.asset]
+            else assetPerLink[a1.linkId].push(a.asset)
+        })
+    })
+    
+    Object.keys(assetPerLink).forEach(key => {
+        if (assetPerLink[key].length > 1) {
+            const asset =assetPerLink[key] 
+            console.log("links has more than one VelhoAsset: "+key)
+            asset.forEach(a =>{
+                    const p =  a as VelhoPavementAsset
+                    console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)}`)
+            }
+            )
+        }
+    });
 }
