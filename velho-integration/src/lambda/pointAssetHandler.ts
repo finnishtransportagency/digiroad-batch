@@ -113,6 +113,7 @@ export class PointAssetHandler extends AssetHandler {
     }
 
     override async filterRoadLinks(assetsWithLinkData: AssetWithLinkData[]): Promise<AssetWithLinkData[]> {
+        let sqlWhichCreatedError = ""
         if (assetsWithLinkData.length === 0) {
             console.log("No velho assets to filter")
             return []
@@ -121,6 +122,11 @@ export class PointAssetHandler extends AssetHandler {
         const vkmLinkIds = assetsWithLinkData.flatMap(asset => asset.linkData.map(link => link.linkId)).filter(id => id);
 
         const client = await getClient()
+
+        if (vkmLinks.length==0) {
+            console.log("No links to filter")
+            return []
+        }
         try {
             await client.connect()
             const linkIdsString = vkmLinkIds.map(linkId => `'${linkId}'`).join(',');
@@ -131,6 +137,8 @@ export class PointAssetHandler extends AssetHandler {
                     WHERE kr.linkid IN (${linkIdsString})
                     AND COALESCE(ac.administrative_class, kr.adminclass) = 1;
             `;
+
+            sqlWhichCreatedError = sql
             const query = {
                 text: sql,
                 rowMode: 'array',
@@ -151,6 +159,7 @@ export class PointAssetHandler extends AssetHandler {
             );
 
         } catch (err) {
+            console.log('Error was created when executing :'+ sqlWhichCreatedError)
             console.log('error during road link filtering', err)
         } finally {
             await client.end()
