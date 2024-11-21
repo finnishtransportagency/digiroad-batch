@@ -7,10 +7,10 @@ export interface VelhoTrafficSignAsset extends VelhoPointAsset {
     ominaisuudet: {
         sijaintipoikkeus: string | null;
         "kunto-ja-vauriotiedot": {
-            "varustevauriot": Array<{
+            "varustevauriot": {
                 "vauriotyyppi": string | null;
                 "korjauksen-kiireellisyysluokka": string | null;
-            }> | null;
+            } | null;
             "yleinen-kuntoluokka": string | null;
             "arvioitu-jaljella-oleva-kayttoika": string | null;
         };
