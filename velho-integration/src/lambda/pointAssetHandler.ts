@@ -123,7 +123,7 @@ export class PointAssetHandler extends AssetHandler {
 
         const client = await getClient()
 
-        if (vkmLinks.length==0) {
+        if (vkmLinkIds.length==0) {
             console.log("No links to filter")
             return []
         }
