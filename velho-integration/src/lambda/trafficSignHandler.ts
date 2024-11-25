@@ -15,7 +15,7 @@ export interface VelhoTrafficSignAsset extends VelhoPointAsset {
             "arvioitu-jaljella-oleva-kayttoika": string | null;
         };
         "rakenteelliset-ominaisuudet": {
-            arvo: string | null;
+            arvo: number | null;
             koko: string | null;
             suunta: string | null;
             materiaali: string | null;
