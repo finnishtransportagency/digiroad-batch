@@ -157,16 +157,26 @@ export class LinearAssetHandler extends AssetHandler {
         for (let i = 0; i < chunkedVelhoAssets.length; i += batchSize) {
             const batch = chunkedVelhoAssets.slice(i, i + batchSize)
             const batchPromises = batch.map(async (chunk) => {
-                const locationAndReturnValue = chunk.map(c => ({
-                    tie: c.alkusijainti?.tie,
-                    osa: c.alkusijainti?.osa,
-                    etaisyys: c.alkusijainti?.etaisyys,
-                    osa_loppu: c.loppusijainti?.osa,
-                    etaisyys_loppu: c.loppusijainti?.etaisyys,
-                    tunniste: c.oid, // TODO lisaa ajorata tänne
-                    palautusarvot: '4,6',
-                    valihaku: true
-                }));
+                const locationAndReturnValue = chunk.map(c => {
+                    const payload = {
+                        tie: c.alkusijainti?.tie,
+                        osa: c.alkusijainti?.osa,
+                        etaisyys: c.alkusijainti?.etaisyys,
+                        osa_loppu: c.loppusijainti?.osa,
+                        etaisyys_loppu: c.loppusijainti?.etaisyys,
+                        tunniste: c.oid,
+                        palautusarvot: '4,6',
+                        valihaku: true
+                    }
+                    const roadways = c.sijaintitarkenne.ajoradat || [];
+                    const roadwayNumbers = roadways.map(ajorata => ajorata.match(/\d+/)).filter(match => match !== null).map(match => match[0])
+                    if (roadwayNumbers.length > 0) {
+                        payload['ajr'] = roadwayNumbers.join(',');
+                    }
+                    return payload
+                    }
+                );
+                
                 const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
                 const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 10, 5000);
                 return data.features
