@@ -32,7 +32,16 @@ export interface VelhoTrafficSignAsset extends VelhoPointAsset {
             "voimassaolo-paattyy": string | null;
         };
     };
-    mitattugeometria: string | null;
+    mitattugeometria: {
+        geometria?: {
+            type: string;
+            coordinates: [number, number, number];
+        };
+        "geometria-wgs84"?: {
+            type: string;
+            coordinates: [number, number, number];
+        };
+    } | null;
 }
 
 export class TrafficSignHandler extends PointAssetHandler {
