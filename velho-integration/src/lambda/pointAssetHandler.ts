@@ -154,7 +154,8 @@ export class PointAssetHandler extends AssetHandler {
 
         try {
             await client.connect();
-
+            console.log('saveNewAssets start');
+            console.log(JSON.stringify(newAssets));
             await client.query('BEGIN');
             const insertPromises = newAssets.map(async (asset) => {
                 const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
@@ -187,6 +188,7 @@ export class PointAssetHandler extends AssetHandler {
 
             await Promise.all(insertPromises);
             await client.query('COMMIT');
+            console.log('saveNewAssets end');
         } catch (err) {
             console.error('err', err);
             await client.query('ROLLBACK');
@@ -207,7 +209,7 @@ export class PointAssetHandler extends AssetHandler {
 
         try {
             await client.connect();
-
+            console.log('updateAssets start');
             await client.query('BEGIN');
             const updatePromises = assetsToUpdate.map(async (asset) => {
                 const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
@@ -238,6 +240,7 @@ export class PointAssetHandler extends AssetHandler {
 
             await Promise.all(updatePromises);
             await client.query('COMMIT');
+            console.log('updateAssets end');
         } catch (err) {
             console.error('err', err);
             await client.query('ROLLBACK');
