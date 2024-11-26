@@ -135,7 +135,8 @@ export abstract class AssetHandler {
     }
 
     calculateDiff = (srcData: VelhoAsset[], currentData: DbAsset[]) => {
-
+        console.log("Current data")
+        console.log(JSON.stringify(currentData))
         // exclude assets that have other state than built or unknown 
         const filteredSrc = srcData.filter(src => !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03');
 
@@ -158,7 +159,9 @@ export abstract class AssetHandler {
         }).map(u => u.externalId);
         const updated = filteredSrc.filter(src => updatedExternalIds.includes(src.oid))
         const notTouched = preserved.filter(p => !updatedExternalIds.includes(p.externalId));
-
+        console.log("DIFF result")
+        console.log(JSON.stringify(added))
+        console.log(JSON.stringify(expired))
         return { added: added, expired: expired, updated: updated, notTouched: notTouched }
     }
 
@@ -170,10 +173,10 @@ export abstract class AssetHandler {
 
         const client = await getClient();
         const idsToExpire = assetsToExpire.map(asset => asset.id)
-
+        console.log("ExpireAssets: "+idsToExpire.join(','))
         try {
             await client.connect();
-
+            console.log("ExpireAssets start")
             await client.query('BEGIN');
             const expireSql = `
             UPDATE asset SET modified_by = 'Tievelho-expire', modified_date = current_timestamp, valid_to = current_timestamp
@@ -181,7 +184,7 @@ export abstract class AssetHandler {
             `;
 
             await client.query(expireSql)
-
+            console.log("ExpireAssets end")
             await client.query('COMMIT');
         } catch (err) {
             console.error('err', err);

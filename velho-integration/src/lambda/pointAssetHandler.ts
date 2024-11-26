@@ -154,7 +154,8 @@ export class PointAssetHandler extends AssetHandler {
 
         try {
             await client.connect();
-
+            console.log('saveNewAssets start');
+            console.log(JSON.stringify(newAssets));
             await client.query('BEGIN');
             const insertPromises = newAssets.map(async (asset) => {
                 const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
@@ -162,7 +163,7 @@ export class PointAssetHandler extends AssetHandler {
                     WITH asset_insert AS (
                         INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code, modified_by, modified_date, geometry)
                         VALUES (nextval('primary_key_seq'), $1, $2, $3, current_timestamp, $4, null, null, ${pointGeometry})
-                        RETURNING id
+                        RETURNING id,external_id
                     ),
                     position_insert AS (
                         INSERT INTO lrm_position (id, start_measure, link_id, adjusted_timestamp, link_source, modified_date)
@@ -170,10 +171,11 @@ export class PointAssetHandler extends AssetHandler {
                         RETURNING id
                     )
                     INSERT INTO asset_link (asset_id, position_id)
-                    VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert));
+                    VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert))
+                    RETURNING (SELECT id,external_id FROM asset_insert);
                 `;
 
-                await client.query(insertSql, [
+                const result =  await client.query(insertSql, [
                     asset.oid,
                     asset_type_id,
                     'Tievelho-import',
@@ -183,10 +185,13 @@ export class PointAssetHandler extends AssetHandler {
                     timeStamp,
                     1 // normal link interface
                 ]);
+                console.log("Inserting theses:")
+                console.log(JSON.stringify(result))
             });
 
             await Promise.all(insertPromises);
             await client.query('COMMIT');
+            console.log('saveNewAssets end');
         } catch (err) {
             console.error('err', err);
             await client.query('ROLLBACK');
@@ -207,7 +212,7 @@ export class PointAssetHandler extends AssetHandler {
 
         try {
             await client.connect();
-
+            console.log('updateAssets start');
             await client.query('BEGIN');
             const updatePromises = assetsToUpdate.map(async (asset) => {
                 const pointGeometry = `ST_GeomFromText('POINT(${asset.keskilinjageometria?.coordinates[0]} ${asset.keskilinjageometria?.coordinates[1]} 0)', 3067)`;
@@ -238,6 +243,7 @@ export class PointAssetHandler extends AssetHandler {
 
             await Promise.all(updatePromises);
             await client.query('COMMIT');
+            console.log('updateAssets end');
         } catch (err) {
             console.error('err', err);
             await client.query('ROLLBACK');
