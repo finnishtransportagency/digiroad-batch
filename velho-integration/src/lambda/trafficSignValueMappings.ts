@@ -1,10 +1,145 @@
-interface TrafficSignTypeMapping {
+interface TrafficSignTypeValues {
     OTHValue: number;
     VelhoNewLawCode: string | null;
     VelhoOldLawCode: string | null;
 }
 
-const mappings: TrafficSignTypeMapping[] = [
+//TODO Finish logic
+export function getTrafficSignTypeDigiroadValue(velhoNewLawCode: string | null, velhoOldLawCode: string | null): number | undefined {
+    let match = trafficSignTypeMappings.find(mapping => mapping.VelhoNewLawCode === velhoNewLawCode);
+
+    if (!match && velhoOldLawCode) {
+        match = trafficSignTypeMappings.find(mapping => mapping.VelhoOldLawCode === velhoOldLawCode);
+    }
+
+    return match?.OTHValue;
+}
+
+export function getLocationSpecifierSideDigiroadValue(velhoSideValue: string | null): number | null {
+    switch (velhoSideValue) {
+        case "puoli/p01":
+            return 1;                           // Oikea
+        case "puoli/p02":
+            return 2;                           // Vasen
+        case "puoli/p03":
+            return 4;                           // Välissä
+        case null:
+            return null;
+        default:
+            return null;
+    }
+}
+
+export function getStructureDigiroadValue(velhoStructureValue: string | null): number | null {
+    switch (velhoStructureValue) {
+        case "liikennemerkki-kiinnitystapa/liikita01":
+            return 7;                           // Muu
+        case "liikennemerkki-kiinnitystapa/liikita02":
+            return 7;                           // Muu
+        case null:
+            return null;
+        default:
+            return null;
+    }
+}
+
+export function getConditionDigiroadValue(velhoConditionValue: string | null): number | null {
+    switch (velhoConditionValue) {
+        case "kuntoluokka/kl01":
+            return 1;
+        case "kuntoluokka/kl02":
+            return 2;
+        case "kuntoluokka/kl03":
+            return 3;
+        case "kuntoluokka/kl04":
+            return 4;
+        case "kuntoluokka/kl05":
+            return 5;
+        case "kuntoluokka/kl09":
+            return null;
+        case null:
+            return null;
+        default:
+            return null;
+    }
+}
+
+export function getSizeDigiroadValue(velhoSizeValue: string | null): number | null {
+    switch (velhoSizeValue) {
+        case "liikennemerkki-koko/liikok03":
+            return 1;
+        case "liikennemerkki-koko/liikok02":
+            return 2;
+        case "liikennemerkki-koko/liikok01":
+            return 3;
+        case null:
+            return null;
+        default:
+            return null;
+    }
+}
+
+export function getCoatingTypeDigiroadValue(velhoCoatingTypeValue: string | null): number | null {
+    switch (velhoCoatingTypeValue) {
+        case "liikennemerkki-kalvotyyppi/liikalty02":
+            return 1;
+        case "liikennemerkki-kalvotyyppi/liikalty03":
+            return 2;
+        case "liikennemerkki-kalvotyyppi/liikalty04":
+            return 3;
+        case null:
+            return null;
+        default:
+            return null;
+    }
+}
+
+export function getSignMaterialDigiroadValue(velhoSignMaterialValue: string | null): number | null {
+    switch (velhoSignMaterialValue) {
+        case "materiaali/ma02":
+            return 1;               // Vaneri
+        case "materiaali/ma01":
+            return 2;               // Alumiini
+        case null:
+            return null;
+        default:
+            return 3;               // ma03 - ma19 muut
+    }
+}
+
+export function getTypeOfDamageDigiroadValue(velhoTypeOfDamageValue: string | null): number | null {
+    switch (velhoTypeOfDamageValue) {
+        case "varusteet-vauriotyyppi/vavt33":
+            return 1;                           // Ruostunut
+        case "varusteet-vauriotyyppi/vavt42":
+            return 2;                           // Kolhiintunut
+        case "varusteet-vauriotyyppi/vavt30":
+            return 3;                           // Maalaus
+        case null:
+            return null;
+        default:
+            return 4;                           // Muu vaurio
+    }
+}
+
+export function getUrgencyOfRepairDigiroadValue(velhoUrgencyOfRepair: string | null): number | null {
+    switch (velhoUrgencyOfRepair) {
+        case "korjauksen-kiireellisyysluokka/koki01":
+            return 1;                           // Erittäin kiireellinen
+        case "korjauksen-kiireellisyysluokka/koki02":
+            return 2;                           // Kiireellinen
+        case "korjauksen-kiireellisyysluokka/koki03":
+            return 3;                           // Jokseenkin kiireellinen
+        case "korjauksen-kiireellisyysluokka/koki04":
+            return 3;                           // Ei kiireellinen
+        case null:
+            return null;
+        default:
+            return null;
+    }
+}
+
+const trafficSignTypeMappings: TrafficSignTypeValues[] = [
     {OTHValue: 147, VelhoNewLawCode: null, VelhoOldLawCode: "liiasnro224"},
     {OTHValue: 36, VelhoNewLawCode: "liilnro1", VelhoOldLawCode: "liiasnro1"},
     {OTHValue: 37, VelhoNewLawCode: "liilnro2", VelhoOldLawCode: "liiasnro2"},
