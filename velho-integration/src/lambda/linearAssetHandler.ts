@@ -33,6 +33,14 @@ interface LinkData {
     m_arvo: number;
     m_arvo_loppu: number;
     kuntakoodi: number;
+    "tie":number,
+    "ajorata": number,
+    "osa": number,
+    "etaisyys": number,
+    "tie_loppu": number,
+    "ajorata_loppu": number,
+    "osa_loppu": number,
+    "etaisyys_loppu": number,
 }
 
 export class LinearAssetHandler extends AssetHandler {
@@ -128,7 +136,7 @@ export class LinearAssetHandler extends AssetHandler {
             const batchPromises = batch.map(async chunk => {
                 const locationAndReturnValue = chunk.map(c => ({
                     tie: c.tie, link_id: c.link_id, link_id_loppu: c.link_id_loppu,
-                    tunniste: c.tunniste, palautusarvot: '4,6', valihaku: "true"
+                    tunniste: c.tunniste, palautusarvot: '2,4,6', valihaku: "true"
                 }));
                 const encodedBody = encodeURIComponent(JSON.stringify(locationAndReturnValue));
                 const data = await retryTimeout(async () => await this.fetchVKM(encodedBody,vkmApiKey), 10, 5000);

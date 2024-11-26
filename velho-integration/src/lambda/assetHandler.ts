@@ -55,15 +55,26 @@ export interface VelhoLinearAsset extends VelhoAsset {
     } | null;
 }
 
+interface LRM {
+    linkId: string;
+    mValue: number;
+    mValueEnd?: number;
+    municipalityCode: number;
+    sideCode?: number;
+}
+
 export interface AssetWithLinkData {
     asset: VelhoAsset;
-    linkData: Array<{
-        linkId: string;
-        mValue: number;
-        mValueEnd?: number;
-        municipalityCode: number;
-        sideCode?: number;
-    }>;
+    linkData: Array<LRM>;
+}
+
+export interface AssetInLinkIndex {
+     [index: string]: AssetInLink[] ;
+}
+
+export interface AssetInLink {
+    asset: VelhoAsset;
+    linkData: LRM;
 }
 
 interface Kohdeluokka {
