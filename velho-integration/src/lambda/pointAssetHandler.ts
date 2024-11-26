@@ -172,7 +172,7 @@ export class PointAssetHandler extends AssetHandler {
                     )
                     INSERT INTO asset_link (asset_id, position_id)
                     VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert))
-                    RETURNING (SELECT id,external_id FROM asset_insert);
+                    RETURNING (SELECT id FROM asset_insert), (SELECT external_id FROM asset_insert);
                 `;
 
                 const result =  await client.query(insertSql, [
