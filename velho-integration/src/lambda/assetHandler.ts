@@ -83,7 +83,7 @@ export interface RoadLink {
     shape:LineString;
 }
 /*
- AssetHandler duty is to provide generic base logic for lambda.
+ AssetHandler duty is to provide generic base logic for the lambda.
  It implements the lowest common denominator logic only.
  */
 export abstract class AssetHandler {
@@ -95,7 +95,7 @@ export abstract class AssetHandler {
     async getRoadLinksDB(src: AssetWithLinkData[]): Promise<RoadLink[]> {
 
         if (src.length === 0) {
-            console.log("No velho assets to filter")
+            console.log("No velho assets which need RoadLink")
             return []
         }
 
@@ -153,7 +153,7 @@ export abstract class AssetHandler {
 
         } catch (err) {
             console.log('err', err);
-            throw '500 during road link filtering';
+            throw '500 during road link fetching';
         } finally {
             await client.end();
 
