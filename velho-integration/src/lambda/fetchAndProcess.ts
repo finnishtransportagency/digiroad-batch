@@ -131,5 +131,4 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
     const updatedWithDigiroadLinks =await  assetHandler.filterRoadLinks(updatedWithLinks)
     console.log('start saving added,')
     await assetHandler.saveChanges(asset_type_id, addedWithDigiroadLinks,updatedWithDigiroadLinks)
-    console.log('start saving added,')
 }

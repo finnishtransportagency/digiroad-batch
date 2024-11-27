@@ -28,7 +28,6 @@ export interface VelhoAsset {
     luotu: string;
     muokattu: string;
     'tiekohteen-tila': string | null | undefined;
-
 }
 
 export interface VelhoPointAsset extends VelhoAsset {
@@ -60,12 +59,13 @@ export interface VelhoLinearAsset extends VelhoAsset {
     } | null;
 }
 
-interface LRM {
+interface LinkInformation {
     linkId: string;
     mValue: number;
     mValueEnd?: number;
     municipalityCode: number;
     sideCode?: number;
+    linkTotalLength?:number;
     roadadress?: {
         ajorata: number;
         osa: number;
@@ -78,7 +78,7 @@ interface LRM {
 
 export interface AssetWithLinkData {
     asset: VelhoAsset;
-    linkData: Array<LRM>;
+    linkData: Array<LinkInformation>;
 }
 
 export interface AssetInLinkIndex {
@@ -87,7 +87,7 @@ export interface AssetInLinkIndex {
 
 export interface AssetInLink {
     asset: VelhoAsset;
-    linkData: LRM;
+    linkData: LinkInformation;
 }
 
 interface Kohdeluokka {

@@ -63,6 +63,22 @@ interface LinkData {
     etaisyys_loppu: number;
 }
 
+export interface LinearAsset {
+    externalIds: string[]; // or specify a more precise type if known
+    LRM: {
+        mValue: number;
+        mValueEnd: number;
+    };
+    roadaddress?: {
+        tie: number;
+        ajorata: number;
+        osa: number;
+        etaisyys: number;
+        etaisyys_loppu: number;
+    };
+    value: any;
+}
+
 export class LinearAssetHandler extends AssetHandler {
 
     override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
@@ -341,37 +357,63 @@ export class LinearAssetHandler extends AssetHandler {
 
         Object.keys(assetInLinkIndex).forEach(key => {
             if (assetInLinkIndex[key].size > 1) {
-                const assetPerLRM = [...assetInLinkIndex[key]];
-                const sortedByLink = assetPerLRM.sort((a, b) => {return a.linkData.mValue - b.linkData.mValue})
-                console.log("links has more than one VelhoAsset: " + key)
-                sortedByLink.forEach(a => {
-                        const p = a.asset as VelhoPavementAsset
-                        const link = a.linkData
-                        const nextAsset = sortedByLink.find(a1 => link.mValueEnd == a1.linkData.mValue && link.mValue < a1.linkData.mValue && a1.asset.oid != p.oid)
-                        const beforeAsset = sortedByLink.find(a1 => link.mValue == a1.linkData.mValueEnd && a1.linkData.mValue > link.mValue && a1.asset.oid != p.oid)
-                        const overlap = sortedByLink.find(a1 => a1.linkData.mValue <= link.mValue || a1.linkData.mValueEnd >= link.mValueEnd && a1.asset.oid != p.oid)
-                        if (nextAsset || beforeAsset) {
-                            if (nextAsset) {
-                                console.log("assets create continues part, can be joined on " + nextAsset.asset.oid)
-                                console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                            }
-                            if (beforeAsset) {
-                                console.log("assets create continues part, can be joined on " + beforeAsset.asset.oid)
-                                console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                            }
-                        }
-                        if (overlap) {
-                            console.log("asset create overlapping part with " + overlap.asset.oid)
-                            console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                        } else {
-                            console.log("no overlapping or continues")
-                            console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                        }
-                    }
-                )
+                this.jointAssets(assetInLinkIndex, key);
             }
         })
     }
+
+    private jointAssets(assetInLinkIndex: AssetInLinkIndex, key: string) {
+        const assetPerLRM = [...assetInLinkIndex[key]];
+        this.handleLink(assetPerLRM);
+    }
+
+    handleLink(assetPerLRM: AssetInLink[]):LinearAsset[] {
+        const sortedByLink = assetPerLRM.sort((a, b) => {
+            return a.linkData.mValue - b.linkData.mValue
+        })
+        sortedByLink.forEach(a => {
+                // tässä tarvittan jokin metodi joka hakee leikkaus ehdon per tietolaji
+                const p = a.asset as VelhoPavementAsset
+                const link = a.linkData
+                const nextAsset = sortedByLink.find(a1 => link.mValueEnd == a1.linkData.mValue && link.mValue < a1.linkData.mValue && a1.asset.oid != p.oid)
+                const beforeAsset = sortedByLink.find(a1 => link.mValue == a1.linkData.mValueEnd && a1.linkData.mValue > link.mValue && a1.asset.oid != p.oid)
+                const overlap = sortedByLink.find(a1 => a1.linkData.mValue <= link.mValue || a1.linkData.mValueEnd >= link.mValueEnd && a1.asset.oid != p.oid)
+
+                const newAsset: LinearAsset = {
+                    externalIds: [p.oid],
+                    LRM: {mValue: 0, mValueEnd: 0},
+                    roadaddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
+                    value: ""
+                }
+
+                if (nextAsset || beforeAsset) {
+                    if (nextAsset) {
+                        console.log("assets create continues part, can be joined on " + nextAsset.asset.oid)
+                        console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                    }
+                    if (beforeAsset) {
+                        console.log("assets create continues part, can be joined on " + beforeAsset.asset.oid)
+                        console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                    }
+                }
+                if (overlap) {
+                    console.log("asset create overlapping part with " + overlap.asset.oid)
+                    console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                } else {
+                    console.log("no overlapping or continues")
+                    console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                }
+            }
+        )
+        const newAsset: LinearAsset = {
+            externalIds: ["1"],
+            LRM: {mValue: 0, mValueEnd: 0},
+            roadaddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
+            value: ""
+        }
+        return [newAsset]
+    }
+
     override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) { // TODO rewrite
 
         if (newAssets.length === 0) {
@@ -435,7 +477,9 @@ export class LinearAssetHandler extends AssetHandler {
     };
 
     async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[]): Promise<void> {
-        await this.saveNewAssets(asset_type_id, newAssets)
-        await this.updateAssets(asset_type_id, newAssets)
+        
+        
+        //await this.saveNewAssets(asset_type_id, newAssets)
+        //await this.updateAssets(asset_type_id, newAssets)
     }
 }
