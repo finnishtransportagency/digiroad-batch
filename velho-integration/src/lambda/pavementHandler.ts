@@ -47,7 +47,7 @@ export class PavementHandler extends LinearAssetHandler {
         return allVelhoAssets.flat();
     }
 
-    filterByPavementType = (srcData: VelhoPavementAsset[]): VelhoPavementAsset[] => { // TODO ei tehdä hash index vaan lisätään tämä tieto suoraan
+    filterByPavementTypeAndAddDRProperty = (srcData: VelhoPavementAsset[]): VelhoPavementAsset[] => { // TODO ei tehdä hash index vaan lisätään tämä tieto suoraan
         const asphaltSources = ['muu-materiaali/mm04', 'paallystetyyppi/pt01', 'paallystetyyppi/pt02', 'paallystetyyppi/pt03', 'paallystetyyppi/pt04',
             'paallystetyyppi/pt08', 'paallystetyyppi/pt09', 'paallystetyyppi/pt10', 'paallystetyyppi/pt11', 'paallystetyyppi/pt12', 'paallystetyyppi/pt13',
             'paallystetyyppi/pt14', 'paallystetyyppi/pt15', 'paallystetyyppi/pt16', 'paallystetyyppi/pt17', 'paallystetyyppi/pt18'
@@ -111,6 +111,7 @@ export class PavementHandler extends LinearAssetHandler {
                 case 'sitomattomat-pintarakenteet':
                     if (s.ominaisuudet?.runkomateriaali && unboundSources.includes(s.ominaisuudet.runkomateriaali)) {
                         this.pavementByOid[s.oid] = PavementClass.UnboundWearLayer
+                        s.ominaisuudet.drProperty =PavementClass.UnboundWearLayer;
                     }
                     break
                 default:
@@ -133,7 +134,7 @@ export class PavementHandler extends LinearAssetHandler {
     override filterUnnecessary(srcData: VelhoPavementAsset[]): VelhoPavementAsset[] {
         const mainLanes = ['kaista-numerointi/kanu11', 'kaista-numerointi/kanu21', 'kaista-numerointi/kanu31']
         const mainLanesFromOneSide = ['kaista-numerointi/kanu11', 'kaista-numerointi/kanu31']
-        const srcWithValidStatus = super.filterUnnecessary(srcData) as VelhoPavementAsset[];
+        const srcWithValidStatus = super.filterUnnecessary(super.filterNonCerterlineAssetsAway(srcData)) as VelhoPavementAsset[];
         const necessaryAssets = srcWithValidStatus.filter(s => {
             if (s.sijaintitarkenne.ajoradat && s.sijaintitarkenne.ajoradat.length === 1 && s.sijaintitarkenne.ajoradat[0] === 'ajorata/ajr0') {
                 return !s.sijaintitarkenne.kaistat || s.sijaintitarkenne.kaistat.length === 0 || s.sijaintitarkenne.kaistat.some(lane => mainLanesFromOneSide.includes(lane))
@@ -141,7 +142,7 @@ export class PavementHandler extends LinearAssetHandler {
                 return !s.sijaintitarkenne.kaistat || s.sijaintitarkenne.kaistat.length === 0 || s.sijaintitarkenne.kaistat.some(lane => mainLanes.includes(lane))
             }
         })
-        return this.filterByPavementType(necessaryAssets)
+        return this.filterByPavementTypeAndAddDRProperty(necessaryAssets)
     };
 
     override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
@@ -182,7 +183,7 @@ export class PavementHandler extends LinearAssetHandler {
             enumeratedValueResult.rows.forEach(row => {
                 enumeratedValueMap.set(Number(row.value), Number(row.id));
             });
-
+            // TODO kirjoita tämä uusiksi
             const insertPromises = newAssets.map((assetWithLinkData) => {
                 return Promise.all((assetWithLinkData.linkData || []).map(async (linkData) => {
                     const pavementType = this.pavementByOid[assetWithLinkData.asset.oid];

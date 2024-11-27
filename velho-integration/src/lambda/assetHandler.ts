@@ -18,6 +18,11 @@ export interface VelhoAsset {
     sijaintitarkenne: {
         ajoradat: string[];
         kaistat?: string[];
+        erotusalueet?: string[];
+        keskialue?: string[];
+        luiskat?: string[];
+        pientareet?: string[];
+        puoli?: string[];
     };
     oid: string;
     luotu: string;
@@ -61,6 +66,14 @@ interface LRM {
     mValueEnd?: number;
     municipalityCode: number;
     sideCode?: number;
+    roadadress?: {
+        ajorata: number;
+        osa: number;
+        etaisyys: number;
+        ajorata_loppu: number;
+        osa_loppu: number;
+        etaisyys_loppu: number;
+    }
 }
 
 export interface AssetWithLinkData {
@@ -69,7 +82,7 @@ export interface AssetWithLinkData {
 }
 
 export interface AssetInLinkIndex {
-     [index: string]: AssetInLink[] ;
+     [index: string]:  Set<AssetInLink>;
 }
 
 export interface AssetInLink {

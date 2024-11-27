@@ -1,8 +1,15 @@
-import { getClient } from "./fetchAndProcess";
-import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
-import { VelhoLinearAsset } from "./assetHandler";
+import {getClient} from "./fetchAndProcess";
+import {
+    AssetHandler,
+    AssetInLink,
+    AssetInLinkIndex,
+    AssetWithLinkData,
+    DbAsset,
+    VelhoAsset,
+    VelhoLinearAsset
+} from "./assetHandler";
 import {chunkData, retryTimeout, timer} from "./utils";
-import {json} from "stream/consumers";
+import {VelhoPavementAsset} from "./pavementHandler";
 
 export interface ValidVKMFeature {
     properties: {
@@ -12,6 +19,14 @@ export interface ValidVKMFeature {
         m_arvo: number;
         m_arvo_loppu: number;
         kuntakoodi: number;
+        tie_loppu: number;
+        ajorata_loppu: number;
+        osa_loppu: number;
+        etaisyys_loppu: number;
+        tie: number;
+        ajorata: number;
+        osa: number;
+        etaisyys: number;
     };
 }
 
@@ -33,14 +48,13 @@ interface LinkData {
     m_arvo: number;
     m_arvo_loppu: number;
     kuntakoodi: number;
-    "tie":number,
-    "ajorata": number,
-    "osa": number,
-    "etaisyys": number,
-    "tie_loppu": number,
-    "ajorata_loppu": number,
-    "osa_loppu": number,
-    "etaisyys_loppu": number,
+    ajorata: number;
+    osa: number;
+    etaisyys: number;
+    tie_loppu: number;
+    ajorata_loppu: number;
+    osa_loppu: number;
+    etaisyys_loppu: number;
 }
 
 export class LinearAssetHandler extends AssetHandler {
@@ -55,6 +69,13 @@ export class LinearAssetHandler extends AssetHandler {
             notTouched: diff.notTouched
         };
     }
+
+    filterNonCerterlineAssetsAway(srcData: VelhoLinearAsset[]): VelhoLinearAsset[] {
+        const allowed =  ["kaistat","ajoradat"]
+        return srcData.filter(s => {
+            return Object.keys(s.sijaintitarkenne).some(key => allowed.includes(key))
+        })
+    };
 
 
     private isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
@@ -112,7 +133,16 @@ export class LinearAssetHandler extends AssetHandler {
                                 linkId: link.link_id,
                                 mValue: link.m_arvo,
                                 mValueEnd: link.m_arvo_loppu,
-                                municipalityCode: link.kuntakoodi
+                                municipalityCode: link.kuntakoodi,
+                                roadadress:{
+                                    ajorata: link.ajorata,
+                                    osa: link.osa,
+                                    etaisyys: link.etaisyys,
+                                    ajorata_loppu: link.ajorata_loppu,
+                                    osa_loppu: link.osa_loppu,
+                                    etaisyys_loppu: link.etaisyys_loppu,
+                                }
+                                
                             }))
                         });
                     }
@@ -143,7 +173,7 @@ export class LinearAssetHandler extends AssetHandler {
 
                 return data.features
                     .filter(f => this.isValidVKMFeature(f))
-                    .map(f => ({...f.properties, tie: undefined}))
+                    .map(f => ({...f.properties}))
             })
             const batchResults = (await Promise.all(batchPromises)).flat()
 
@@ -292,8 +322,51 @@ export class LinearAssetHandler extends AssetHandler {
         }
     };
 
+    jointAssetsByCommonDenominator  (asset_type_id: number, newAssets: AssetWithLinkData[]) {
+        const assetInLinkIndex: AssetInLinkIndex = {}
+        newAssets.forEach(a => {
+            a.linkData.forEach(a1 => {
+                if (assetInLinkIndex[a1.linkId] == undefined || assetInLinkIndex[a1.linkId].size == 0) {
+                    const newSet = new Set<AssetInLink>();
+                    assetInLinkIndex[a1.linkId] = newSet.add({linkData: a1, asset: a.asset} as AssetInLink);
+                } else assetInLinkIndex[a1.linkId].add({linkData: a1, asset: a.asset} as AssetInLink) // lopullisesta huomioi duplikaatit
+            })
+        })
 
-    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
+        Object.keys(assetInLinkIndex).forEach(key => {
+            if (assetInLinkIndex[key].size > 1) {
+                const assetPerLRM = [...assetInLinkIndex[key]];
+                const sortedByLink = assetPerLRM.sort((a, b) => {return a.linkData.mValue - b.linkData.mValue})
+                console.log("links has more than one VelhoAsset: " + key)
+                sortedByLink.forEach(a => {
+                        const p = a.asset as VelhoPavementAsset
+                        const link = a.linkData
+                        const nextAsset = sortedByLink.find(a1 => link.mValueEnd == a1.linkData.mValue && link.mValue < a1.linkData.mValue && a1.asset.oid != p.oid)
+                        const beforeAsset = sortedByLink.find(a1 => link.mValue == a1.linkData.mValueEnd && a1.linkData.mValue > link.mValue && a1.asset.oid != p.oid)
+                        const overlap = sortedByLink.find(a1 => a1.linkData.mValue <= link.mValue || a1.linkData.mValueEnd >= link.mValueEnd && a1.asset.oid != p.oid)
+                        if (nextAsset || beforeAsset) {
+                            if (nextAsset) {
+                                console.log("assets create continues part, can be joined on " + nextAsset.asset.oid)
+                                console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                            }
+                            if (beforeAsset) {
+                                console.log("assets create continues part, can be joined on " + beforeAsset.asset.oid)
+                                console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                            }
+                        }
+                        if (overlap) {
+                            console.log("asset create overlapping part with " + overlap.asset.oid)
+                            console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                        } else {
+                            console.log("no overlapping or continues")
+                            console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                        }
+                    }
+                )
+            }
+        })
+    }
+    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) { // TODO rewrite
 
         if (newAssets.length === 0) {
             console.log("No assets to save.")

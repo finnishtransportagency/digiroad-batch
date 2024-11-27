@@ -145,7 +145,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '1': 'muut-pintarakenteet', '2': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Asphalt, PavementClass.Asphalt,
         ]);
@@ -175,7 +175,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '3': 'ladottavat-pintarakenteet', '4': 'ladottavat-pintarakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Cobblestone, PavementClass.Cobblestone,
         ]);
@@ -205,7 +205,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '5': 'muut-pintarakenteet', '6': 'sitomattomat-pintarakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.UnboundWearLayer, PavementClass.UnboundWearLayer,
         ]);
@@ -235,7 +235,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '7': 'muut-pintarakenteet', '8': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.OtherPavementClasses, PavementClass.OtherPavementClasses,
         ]);
@@ -265,7 +265,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '9': 'muut-pintarakenteet', '10': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Unknown, PavementClass.Unknown,
         ]);
@@ -285,7 +285,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '11': 'unknown-source' };
-        expect(() => assetHandler.filterByPavementType(srcData)).toThrow('unrecognized pavement source');
+        expect(() => assetHandler.filterByPavementTypeAndAddDRProperty(srcData)).toThrow('unrecognized pavement source');
     });
 
     test('surfacing 1 is taken, but 2 is ignored', () => {
@@ -312,7 +312,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '12': 'pintaukset', '13': 'pintaukset' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => r.oid)).toEqual(['12'])
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.OtherPavementClasses,
@@ -343,7 +343,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '14': 'sidotut-paallysrakenteet', '15': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.map(r => r.oid)).toEqual(['15'])
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Unknown,
@@ -374,7 +374,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '16': 'sidotut-paallysrakenteet', '17': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementType(srcData);
+        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
         expect(result.length === 0)
     });
 });
