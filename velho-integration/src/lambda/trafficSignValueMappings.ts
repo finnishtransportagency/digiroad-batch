@@ -4,15 +4,14 @@ interface TrafficSignTypeValues {
     VelhoOldLawCode: string | null;
 }
 
-//TODO Finish logic
-export function getTrafficSignTypeDigiroadValue(velhoNewLawCode: string | null, velhoOldLawCode: string | null): number | undefined {
+export function getTrafficSignTypeDigiroadValue(velhoNewLawCode: string | null, velhoOldLawCode: string | null): number | null {
     let match = trafficSignTypeMappings.find(mapping => mapping.VelhoNewLawCode === velhoNewLawCode);
 
     if (!match && velhoOldLawCode) {
         match = trafficSignTypeMappings.find(mapping => mapping.VelhoOldLawCode === velhoOldLawCode);
     }
 
-    return match?.OTHValue;
+    return match ? match.OTHValue : null;
 }
 
 export function getLocationSpecifierSideDigiroadValue(velhoSideValue: string | null): number | null {
