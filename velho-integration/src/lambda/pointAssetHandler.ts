@@ -24,6 +24,10 @@ export class PointAssetHandler extends AssetHandler {
             notTouched: diff.notTouched
         };
     }
+    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[]): Promise<void> {
+        await this.saveNewAssets(asset_type_id, newAssets)
+        await this.updateAssets(asset_type_id, newAssets)
+    }
 
     getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
         const sourcePointAssets = srcData as VelhoPointAsset[]

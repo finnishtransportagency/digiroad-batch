@@ -1,7 +1,10 @@
 import { getClient } from "./fetchAndProcess";
-import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
+import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData, VelhoLinearAsset} from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
 import {chunkData, retryTimeout, timer} from "./utils";
+import {performance} from "perf_hooks";
+import {data} from "aws-cdk/lib/logging";
+import {match} from "assert";
 
 export interface ValidVKMFeature {
     properties: {
@@ -328,7 +331,13 @@ export class LinearAssetHandler extends AssetHandler {
         }
     };
 
-    override async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
-        return
+    updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]): Promise<void> {
+        //Placeholder logic
+        return new Promise<void>((resolve, reject) => {resolve();}); 
+    };
+
+    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[]): Promise<void> {
+        await this.saveNewAssets(asset_type_id, newAssets)
+        await this.updateAssets(asset_type_id, newAssets)
     }
 }
