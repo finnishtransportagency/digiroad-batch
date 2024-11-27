@@ -99,12 +99,20 @@ interface Kohdeluokka {
         }
     }
 }
-
+/*
+ AssetHandler duty is to provide generic base logic for lambda.
+ It implements the lowest common denominator logic only.
+ */
 export abstract class AssetHandler {
 
     abstract getRoadLinks(srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]>;
 
     abstract filterRoadLinks(src: AssetWithLinkData[]): Promise<AssetWithLinkData[]>;
+    /* 
+        Final step for lambda. Override and add saveNewAssets and updateAssets logic with your own addition logic per asset type.
+        AssetHandler is agnostic about how final data is processed and updated into database. 
+     */
+    abstract saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[],assetsToUpdate: AssetWithLinkData[]): Promise<void>;
 
     private getElyPath = async (token: string, ely: string, path: string): Promise<string> => {
         const baseUrl = await getVelhoBaseUrl()
@@ -265,9 +273,5 @@ export abstract class AssetHandler {
             await client.end();
         }
     };
-
-    abstract saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]): Promise<void>;
-
-    abstract updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]): Promise<void>;
 
 }
