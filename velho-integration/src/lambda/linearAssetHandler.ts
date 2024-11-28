@@ -1,5 +1,6 @@
 import {getClient} from "./fetchAndProcess";
 import {
+    RoadLink,
     AssetHandler,
     AssetInLink,
     AssetInLinkIndex,
@@ -14,8 +15,6 @@ import { VelhoLinearAsset } from "./assetHandler";
 import {chunkData, retryTimeout, timer} from "./utils";
 import {VelhoPavementAsset} from "./pavementHandler";
 import {performance} from "perf_hooks";
-import {data} from "aws-cdk/lib/logging";
-import {match} from "assert";
 
 export interface ValidVKMFeature {
     properties: {
@@ -257,91 +256,28 @@ export class LinearAssetHandler extends AssetHandler {
         return firstResults;
     }
 
-    override async filterRoadLinks(assetsWithLinkData: AssetWithLinkData[]): Promise<AssetWithLinkData[]> {
+    override filterRoadLinks(assetsWithLinkData: AssetWithLinkData[],links:RoadLink[]): AssetWithLinkData[] {
         if (assetsWithLinkData.length === 0) {
             console.log("No velho assets to filter")
             return []
         }
+        return assetsWithLinkData.map(asset => {
+            const filteredLinkData = asset.linkData.map(ld => {
+                const match = links.find(link => link.linkId === ld.linkId);
+                if (match) {
+                    return {
+                        ...ld,
+                        sideCode: match.sideCode
+                    };
+                } else {return null}
+            })
+                .filter(ld => ld !== null);
 
-        const vkmLinkIds = assetsWithLinkData.flatMap(asset => asset.linkData.map(link => link.linkId)).filter(id => id);
-
-        const client = await getClient();
-
-        const missingLinkIds: string[] = [];
-
-        try {
-            await client.connect();
-            const linkIdsString = vkmLinkIds.map(linkId => `'${linkId}'`).join(',');
-            const sql = `
-                SELECT 
-                    kr.linkid,
-                    CASE 
-                        WHEN td.traffic_direction = 2 THEN 1  -- Both Directions
-                        WHEN td.traffic_direction = 3 THEN 3  -- Against Digitizing
-                        WHEN td.traffic_direction = 4 THEN 2  -- Towards Digitizing
-                        ELSE 
-                            CASE 
-                                WHEN kr.directiontype = 0 THEN 1  -- Both Directions
-                                WHEN kr.directiontype = 1 THEN 2  -- Towards Digitizing
-                                WHEN kr.directiontype = 2 THEN 3  -- Against Digitizing
-                            END
-                    END as side_code
-                FROM kgv_roadlink kr
-                LEFT JOIN administrative_class ac ON kr.linkid = ac.link_id   
-                LEFT JOIN traffic_direction td ON kr.linkid = td.link_id      
-                WHERE kr.linkid IN (${linkIdsString})
-                AND COALESCE(ac.administrative_class, kr.adminclass) = 1;   
-            `;
-
-            const query = {
-                text: sql,
-                rowMode: 'array',
+            return {
+                ...asset,
+                linkData: filteredLinkData
             };
-
-            const result = await client.query(query);
-
-            const matchedLinks = result.rows.map((row: [string, number]) => ({
-                linkId: row[0],
-                sideCode: row[1],
-            }));
-
-            console.log(`VKM links found in db ${matchedLinks.length}/${vkmLinkIds.length}`);
-
-            return assetsWithLinkData.map(asset => {
-                const filteredLinkData = asset.linkData.map(ld => {
-                    const match = matchedLinks.find(link => link.linkId === ld.linkId);
-                    if (match) {
-                        return {
-                            ...ld,
-                            sideCode: match.sideCode
-                        };
-                    } else {
-                        if (ld.linkId) {
-                            missingLinkIds.push(ld.linkId);
-                        }
-                        return null
-                    }
-                })
-                    .filter(ld => ld !== null);
-
-                return {
-                    ...asset,
-                    linkData: filteredLinkData
-                };
-            }).filter(asset => asset.linkData.length > 0);
-            
-        } catch (err) {
-            console.log('err', err);
-            throw '500 during road link filtering';
-        } finally {
-            await client.end();
-
-            if (missingLinkIds.length > 0) {
-                console.log('VKM links not found in db:', missingLinkIds.join(','));
-            } else {
-                console.log('All VKM links were found in db.');
-            }
-        }
+        }).filter(asset => asset.linkData.length > 0) as AssetWithLinkData[];
     };
 
     jointAssetsByCommonDenominator  (asset_type_id: number, newAssets: AssetWithLinkData[]) {
@@ -361,7 +297,6 @@ export class LinearAssetHandler extends AssetHandler {
             }
         })
     }
-
     private jointAssets(assetInLinkIndex: AssetInLinkIndex, key: string) {
         const assetPerLRM = [...assetInLinkIndex[key]];
         this.handleLink(assetPerLRM);
@@ -414,7 +349,7 @@ export class LinearAssetHandler extends AssetHandler {
         return [newAsset]
     }
 
-    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) { // TODO rewrite
+    async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
 
         if (newAssets.length === 0) {
             console.log("No assets to save.")
@@ -476,7 +411,7 @@ export class LinearAssetHandler extends AssetHandler {
         return new Promise<void>((resolve, reject) => {resolve();}); 
     };
 
-    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[]): Promise<void> {
+    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[],links:RoadLink[]): Promise<void> {
         
         
         //await this.saveNewAssets(asset_type_id, newAssets)

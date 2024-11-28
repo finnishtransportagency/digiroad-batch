@@ -122,13 +122,13 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
    
     console.log(`assets to update: ${updated.length}`)
     const updatedWithLinks= await assetHandler.getRoadLinks(updated, vkmApiKey)
+
+    const links = await assetHandler.getRoadLinksDB(addedWithLinks.concat(updatedWithLinks))
   
     console.log('road link data fetched')
     console.log('start saving')
+    const addedWithDigiroadLinks = assetHandler.filterRoadLinks(addedWithLinks,links)
+    const updatedWithDigiroadLinks = assetHandler.filterRoadLinks(updatedWithLinks,links)
 
-   
-    const addedWithDigiroadLinks = await assetHandler.filterRoadLinks(addedWithLinks)
-    const updatedWithDigiroadLinks =await  assetHandler.filterRoadLinks(updatedWithLinks)
-    console.log('start saving added,')
-    await assetHandler.saveChanges(asset_type_id, addedWithDigiroadLinks,updatedWithDigiroadLinks)
+    await assetHandler.saveChanges(asset_type_id, addedWithDigiroadLinks,updatedWithDigiroadLinks,links)
 }

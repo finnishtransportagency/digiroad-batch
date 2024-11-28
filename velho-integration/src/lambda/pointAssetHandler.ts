@@ -1,5 +1,5 @@
 import { getClient } from "./fetchAndProcess"
-import { AssetHandler, VelhoAsset, VelhoPointAsset, DbAsset, AssetWithLinkData } from "./assetHandler"
+import {AssetHandler, VelhoAsset, VelhoPointAsset, DbAsset, AssetWithLinkData, RoadLink} from "./assetHandler"
 
 export interface VKMResponseForPoint {
     features: {
@@ -24,7 +24,7 @@ export class PointAssetHandler extends AssetHandler {
             notTouched: diff.notTouched
         };
     }
-    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[]): Promise<void> {
+    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[],links:RoadLink[]): Promise<void> {
         await this.saveNewAssets(asset_type_id, newAssets)
         await this.updateAssets(asset_type_id, newAssets)
     }
@@ -116,53 +116,18 @@ export class PointAssetHandler extends AssetHandler {
         }
     }
 
-    override async filterRoadLinks(assetsWithLinkData: AssetWithLinkData[]): Promise<AssetWithLinkData[]> {
+    override filterRoadLinks(assetsWithLinkData: AssetWithLinkData[],links:RoadLink[]): AssetWithLinkData[] {
         if (assetsWithLinkData.length === 0) {
             console.log("No velho assets to filter")
             return []
         }
-
-        const vkmLinkIds = assetsWithLinkData.flatMap(asset => asset.linkData.map(link => link.linkId)).filter(id => id);
-
-        const client = await getClient()
-        try {
-            await client.connect()
-            const linkIdsString = vkmLinkIds.map(linkId => `'${linkId}'`).join(',');
-            // admin class
-            const sql = `
-                SELECT linkid from kgv_roadlink kr
-                    LEFT JOIN administrative_class ac ON kr.linkid = ac.link_id       
-                    WHERE kr.linkid IN (${linkIdsString})
-                    AND COALESCE(ac.administrative_class, kr.adminclass) = 1;
-            `;
-            const query = {
-                text: sql,
-                rowMode: 'array',
-            }
-            const result = await client.query(query)
-
-            const linkIds = result.rows.map((row: [string]) => row[0])
-
-            console.log(`VKM links found in db ${linkIds.length}/${vkmLinkIds.length}`);
-
-            const missingLinks = vkmLinkIds.filter(linkId => !linkIds.includes(linkId));
-
-            if (missingLinks.length > 0) {
-                console.log('Missing links in db:', missingLinks.join(','));
-            }
-            return assetsWithLinkData.filter(s =>
-                s.linkData?.[0]?.linkId !== undefined && linkIds.some(linkid => s.linkData?.[0]?.linkId === linkid)
-            );
-
-        } catch (err) {
-            console.log('error during road link filtering', err)
-        } finally {
-            await client.end()
-        }
-        throw '500 during road link filtering'
+        const linkIds = links.map(a => a.linkId)
+        return assetsWithLinkData.filter(s =>
+            s.linkData?.[0]?.linkId !== undefined && linkIds.some(linkid => s.linkData?.[0]?.linkId === linkid)
+        );
     }
 
-    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
+     async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
 
         if (newAssets.length === 0) {
             console.log("No velho assets to save.")
@@ -217,7 +182,7 @@ export class PointAssetHandler extends AssetHandler {
         }
     };
 
-    override async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
+     async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
 
         if (this.updateAssets.length === 0) {
             console.log("No assets to update.")
