@@ -172,6 +172,12 @@ export abstract class AssetHandler {
             } as RoadLink));
 
             console.log(`VKM links found in db ${matchedLinks.length}/${vkmLinkIds.length}`);
+            const linksIds = matchedLinks.map(a=>a.linkId)
+            const missingLinks = vkmLinkIds.filter(linkId => !linksIds.includes(linkId));
+
+            if (missingLinks.length > 0) {
+                console.log('Missing links in db:', missingLinks.join(','));
+            }
 
             return matchedLinks
 
