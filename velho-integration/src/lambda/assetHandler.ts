@@ -1,5 +1,7 @@
 import { getClient, getVelhoBaseUrl } from "./fetchAndProcess"
 import {Geometry, LineString} from "wkx";
+import { getClient, getVelhoBaseUrl } from "./utils"
+import {Geometry, LineString} from "wkx";
 
 export interface DbAsset {
     id: number
@@ -361,8 +363,362 @@ export abstract class AssetHandler {
         }
     };
 
-    abstract saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]): Promise<void>;
+    async getPropertyId(publicId: string, typeId: number): Promise<number> {
+        const client = await getClient();
 
-    abstract updateAssets(assetsToUpdate: AssetWithLinkData[]): Promise<void>;
+        try {
+            await client.connect();
+
+            const sql = `
+            SELECT id 
+            FROM property 
+            WHERE public_id = $1 
+              AND asset_type_id = $2
+        `;
+            const query = { text: sql, values: [publicId, typeId] };
+
+            const result = await client.query(query);
+
+            if (result.rows.length === 0) {
+                throw new Error(`Property not found for public_id=${publicId} and asset_type_id=${typeId}`);
+            }
+
+            return result.rows[0].id;
+        } catch (err) {
+            console.error('Error fetching property ID:', err);
+            throw '500: Error fetching property ID';
+        } finally {
+            await client.end();
+        }
+    }
+
+
+    /**
+     *
+     * @param assetId Id of the asset for which the property is being created
+     * @param typeId Asset type id
+     * @param publicId public_id of property to insert
+     * @param value Text value to insert
+     * @param groupedId Used to group trafficLight properties to correct light, on other asset types use default 0
+     */
+    async insertTextProperty(assetId: number, typeId: number, publicId: string, value: string, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const insertSql = `
+            INSERT INTO text_property_value (id, property_id, asset_id, value_fi, created_date, grouped_id)
+            VALUES (nextval('primary_key_seq'), $1, $2, $3, current_timestamp, $4)
+        `;
+            const insertQuery = { text: insertSql, values: [propertyId, assetId, value, groupedId] };
+
+            await client.query(insertQuery);
+
+        } catch (err) {
+            console.error('Error inserting text property value:', err);
+            throw '500: Something went wrong during insertTextProperty';
+        } finally {
+            await client.end();
+        }
+    }
+
+    async updateTextProperty(assetId: number, typeId: number, publicId: string, value: string, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const updateSql = `
+                UPDATE text_property_value
+                SET value_fi = $1
+                WHERE property_id = $2
+                AND asset_id = $3
+                AND grouped_id = $4
+            `;
+            const updateQuery = {text: updateSql, values: [value, propertyId, assetId, groupedId]};
+
+            const result = await client.query(updateQuery);
+            if (result.rowCount === 0) {
+                throw `404: Text property not found for assetId ${assetId}, publicId ${publicId}, and groupedId ${groupedId}`;
+            }
+
+        } catch (err) {
+            console.error('Error updating text property value:', err);
+            throw '500: Something went wrong during updateTextProperty';
+        } finally {
+            await client.end();
+        }
+    }
+
+    async deleteTextProperty(assetId: number, typeId: number, publicId: string): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const deleteSql = `
+                DELETE
+                FROM text_property_value
+                WHERE property_id = $1
+                AND asset_id = $2
+            `;
+            const deleteQuery = {text: deleteSql, values: [propertyId, assetId]};
+
+            const result = await client.query(deleteQuery);
+            if (result.rowCount === 0) {
+                throw `404: Text property not found for assetId ${assetId}, publicId ${publicId}`;
+            }
+
+        } catch (err) {
+            console.error('Error deleting text property value:', err);
+            throw '500: Something went wrong during deleteTextProperty';
+        } finally {
+            await client.end();
+        }
+    }
+
+    /**
+     *
+     * @param assetId Id of the asset for which the property is being created
+     * @param typeId Asset type id
+     * @param publicId public_id of property to insert
+     * @param value Number value to insert
+     * @param groupedId Used to group trafficLight properties to correct light, on other asset types use default 0
+     */
+    async insertNumberProperty(assetId: number, typeId: number, publicId: string, value: number, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const insertSql = `
+            INSERT INTO number_property_value (id, asset_id, property_id, value, grouped_id)
+            VALUES (nextval('primary_key_seq'), $1, $2, $3, $4)
+        `;
+            const insertQuery = { text: insertSql, values: [assetId, propertyId, value, groupedId] };
+
+            await client.query(insertQuery);
+
+        } catch (err) {
+            console.error('Error inserting number property value:', err);
+            throw '500: Something went wrong during insertNumberProperty';
+        } finally {
+            await client.end();
+        }
+    }
+
+    async updateNumberProperty(assetId: number, typeId: number, publicId: string, value: number, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const updateSql = `
+                UPDATE number_property_value
+                SET value = $1
+                WHERE asset_id = $2
+                AND property_id = $3
+                AND grouped_id = $4
+            `;
+            const updateQuery = {text: updateSql, values: [value, assetId, propertyId, groupedId]};
+
+            const result = await client.query(updateQuery);
+            if (result.rowCount === 0) {
+                throw `404: Number property not found for assetId ${assetId}, publicId ${publicId}, and groupedId ${groupedId}`;
+            }
+
+        } catch (err) {
+            console.error('Error updating number property value:', err);
+            throw '500: Something went wrong during updateNumberProperty';
+        } finally {
+            await client.end();
+        }
+    }
+
+    async deleteNumberProperty(assetId: number, typeId: number, publicId: string): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const deleteSql = `
+                DELETE
+                FROM number_property_value
+                WHERE asset_id = $1
+                AND property_id = $2
+            `;
+            const deleteQuery = {text: deleteSql, values: [assetId, propertyId]};
+
+            const result = await client.query(deleteQuery);
+            if (result.rowCount === 0) {
+                throw `404: Number property not found for assetId ${assetId}, publicId ${publicId}}`;
+            }
+
+        } catch (err) {
+            console.error('Error deleting number property value:', err);
+            throw '500: Something went wrong during deleteNumberProperty';
+        } finally {
+            await client.end();
+        }
+    }
+
+    /**
+     *
+     * @param assetId Id of the asset for which the property is being created
+     * @param typeId Asset type id
+     * @param publicId public_id of property
+     * @param singleChoiceValue value of property using Digiroad enumerations
+     * @param groupedId Used to group trafficLight properties to correct light, on other asset types use default 0
+     */
+    async insertSingleChoicePropertyValue(assetId: number, typeId: number, publicId: string, singleChoiceValue: number, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const insertSql = `
+            INSERT INTO single_choice_value(asset_id, enumerated_value_id, property_id, modified_date, grouped_id)
+            VALUES ($1,(SELECT id FROM enumerated_value WHERE value = $2 and property_id = $3), $3, current_timestamp, $4)
+        `;
+            const insertQuery = { text: insertSql, values: [assetId, singleChoiceValue, propertyId, groupedId]};
+
+            await client.query(insertQuery);
+
+        } catch (err) {
+            console.error('Error inserting single choice property value:', err);
+            throw '500: Something went wrong during insertSingleChoicePropertyValue';
+        } finally {
+            await client.end();
+        }
+    }
+
+    async updateSingleChoicePropertyValue(assetId: number, typeId: number, publicId: string, singleChoiceValue: number, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const updateSql = `
+                UPDATE single_choice_value
+                SET enumerated_value_id = (SELECT id FROM enumerated_value WHERE value = $1 AND property_id = $2),
+                    modified_date = current_timestamp
+                WHERE asset_id = $3
+                AND property_id = $2
+                AND grouped_id = $4
+            `;
+            const updateQuery = {text: updateSql, values: [singleChoiceValue, propertyId, assetId, groupedId]};
+
+            const result = await client.query(updateQuery);
+            if (result.rowCount === 0) {
+                throw `404: Single choice property not found for assetId ${assetId}, publicId ${publicId}, and groupedId ${groupedId}`;
+            }
+
+        } catch (err) {
+            console.error('Error updating single choice property value:', err);
+            throw '500: Something went wrong during updateSingleChoicePropertyValue';
+        } finally {
+            await client.end();
+        }
+    }
+
+    /**
+     *
+     * @param assetId Id of the asset for which the property is being created
+     * @param typeId Asset type id
+     * @param publicId public_id of property
+     * @param multipleChoiceValue value of property using Digiroad enumerations
+     * @param groupedId Used to group trafficLight properties to correct light, on other asset types use default 0
+     */
+    async insertMultipleChoicePropertyValue(assetId: number, typeId: number, publicId: string, multipleChoiceValue: number, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const insertSql = `
+            INSERT INTO multiple_choice_value(id, property_id, asset_id, enumerated_value_id, modified_date, grouped_id)
+            VALUES (nextval('primary_key_seq'), $3, $1, (SELECT id FROM enumerated_value WHERE value = $2 and property_id = $3), current_timestamp, $4)
+        `;
+            const insertQuery = { text: insertSql, values: [assetId, multipleChoiceValue, propertyId, groupedId]};
+
+            await client.query(insertQuery);
+
+        } catch (err) {
+            console.error('Error inserting multiple choice property value:', err);
+            throw '500: Something went wrong during insertMultipleChoicePropertyValue';
+        } finally {
+            await client.end();
+        }
+    }
+
+    async updateMultipleChoicePropertyValue(assetId: number, typeId: number, publicId: string, multipleChoiceValue: number, groupedId: number = 0): Promise<void> {
+        const propertyId = await this.getPropertyId(publicId, typeId);
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const updateSql = `
+                UPDATE multiple_choice_value
+                SET enumerated_value_id = (SELECT id FROM enumerated_value WHERE value = $1 AND property_id = $2),
+                    modified_date = current_timestamp
+                WHERE asset_id = $3
+                AND property_id = $2
+                AND grouped_id = $4
+            `;
+            const updateQuery = {text: updateSql, values: [multipleChoiceValue, propertyId, assetId, groupedId]};
+
+            const result = await client.query(updateQuery);
+            if (result.rowCount === 0) {
+                throw `404: Multiple choice property not found for assetId ${assetId}, publicId ${publicId}, and groupedId ${groupedId}`;
+            }
+
+        } catch (err) {
+            console.error('Error updating multiple choice property value:', err);
+            throw '500: Something went wrong during updateMultipleChoicePropertyValue';
+        } finally {
+            await client.end();
+        }
+    }
+
+    /**
+     *
+     * @param mcvId multiple_choice_value.id of the property value to be deleted
+     */
+    async deleteMultipleChoicePropertyValue(mcvId: number): Promise<void> {
+        const client = await getClient();
+
+        try {
+            await client.connect();
+
+            const deleteSql = `
+                DELETE
+                FROM multiple_choice_value
+                WHERE id = $1
+            `;
+            const deleteQuery = {text: deleteSql, values: [mcvId]};
+
+            const result = await client.query(deleteQuery);
+            if (result.rowCount === 0) {
+                throw `404: Multiple choice property value not found for mcv Id ${mcvId}}`;
+            }
+
+        } catch (err) {
+            console.error('Error deleting multiple choice property value:', err);
+            throw '500: Something went wrong during deleteMultipleChoicePropertyValue';
+        } finally {
+            await client.end();
+        }
+    }
 
 }

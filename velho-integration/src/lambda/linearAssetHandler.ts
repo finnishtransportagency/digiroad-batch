@@ -16,6 +16,8 @@ import {chunkData, retryTimeout, timer} from "./utils";
 import {VelhoPavementAsset} from "./pavementHandler";
 import {performance} from "perf_hooks";
 import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
+import { getClient } from "./utils";
+import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData, RoadLink} from "./assetHandler";
 import { VelhoLinearAsset } from "./assetHandler";
 import { retryTimeout } from "./utils";
 

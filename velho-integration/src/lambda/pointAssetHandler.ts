@@ -38,9 +38,7 @@ export class PointAssetHandler extends AssetHandler {
             }
             return R;
         };
-
-        const fetchVKM = async (src: VelhoPointAsset[]) => {
-            const locationAndReturnValue = src.map(s => {
+        
         const fetchVKM = async (src: VelhoAsset[]) => {
             const locationAndReturnValue = (src  as VelhoPointAsset[]).filter( a=> a.sijainti?.tie !=undefined).map(s => {
                 const roadways = s.sijaintitarkenne.ajoradat || [];
