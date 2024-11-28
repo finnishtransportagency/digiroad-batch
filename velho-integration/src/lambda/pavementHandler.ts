@@ -1,6 +1,6 @@
-import { AssetWithLinkData, VelhoAsset, VelhoLinearAsset } from "./assetHandler";
-import { getClient } from "./fetchAndProcess";
-import { LinearAssetHandler } from "./linearAssetHandler";
+import { getClient } from "./utils/AWSUtils";
+import {LinearAssetHandler} from "./linearAssetHandler";
+import {AssetWithLinkData, VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
 
 export enum PavementClass {
     Asphalt = 1, //asfaltti

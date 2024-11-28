@@ -1,97 +1,7 @@
-import { getClient, getVelhoBaseUrl } from "./fetchAndProcess"
 import {Geometry, LineString} from "wkx";
-import { getClient, getVelhoBaseUrl } from "./utils"
-import {Geometry, LineString} from "wkx";
-
-export interface DbAsset {
-    id: number
-    externalId: string | null,
-    createdBy: string,
-    createdDate: Date,
-    modifiedBy: string | null,
-    modifiedDate: Date | null,
-    linkid: string,
-    startMeasure: number | null,
-    endMeasure: number | null,
-    municipalitycode: number
-}
-
-export interface VelhoAsset {
-    'sijainti-oid': string;
-    sijaintitarkenne: {
-        ajoradat: string[];
-        kaistat?: string[];
-        erotusalueet?: string[];
-        keskialue?: string[];
-        luiskat?: string[];
-        pientareet?: string[];
-        puoli?: string[];
-    };
-    oid: string;
-    luotu: string;
-    muokattu: string;
-    'tiekohteen-tila': string | null | undefined;
-}
-
-export interface VelhoPointAsset extends VelhoAsset {
-    sijainti?: {
-        osa: number;
-        tie: number;
-        etaisyys: number;
-    } | null;
-    keskilinjageometria: {
-        coordinates: [number, number, number];
-        type: "Point";
-    }
-}
-
-export interface VelhoLinearAsset extends VelhoAsset {
-    keskilinjageometria: {
-        coordinates: [[number, number, number][]];
-        type: "MultiLinestring";
-    };
-    alkusijainti?: {
-        osa: number;
-        tie: number;
-        etaisyys: number;
-    } | null;
-    loppusijainti?: {
-        osa: number;
-        tie: number;
-        etaisyys: number;
-    } | null;
-}
-
-interface LinkInformation {
-    linkId: string;
-    mValue: number;
-    mValueEnd?: number;
-    municipalityCode: number;
-    sideCode?: number;
-    linkTotalLength?:number;
-    roadadress?: {
-        ajorata: number;
-        osa: number;
-        etaisyys: number;
-        ajorata_loppu: number;
-        osa_loppu: number;
-        etaisyys_loppu: number;
-    }
-}
-
-export interface AssetWithLinkData {
-    asset: VelhoAsset;
-    linkData: Array<LinkInformation>;
-}
-
-export interface AssetInLinkIndex {
-     [index: string]:  Set<AssetInLink>;
-}
-
-export interface AssetInLink {
-    asset: VelhoAsset;
-    linkData: LinkInformation;
-}
+import {DbAsset, RoadLink} from "./type/type";
+import {AssetWithLinkData, VelhoAsset} from "./type/velhoAsset";
+import {getClient, getVelhoBaseUrl} from "./utils/AWSUtils";
 
 interface Kohdeluokka {
     jaottelut: {
@@ -101,12 +11,6 @@ interface Kohdeluokka {
             }
         }
     }
-}
-export interface RoadLink {
-    linkId: string;
-    sideCode: number;
-    geometryLength: number;
-    shape:LineString;
 }
 /*
  AssetHandler duty is to provide generic base logic for the lambda.
@@ -362,6 +266,24 @@ export abstract class AssetHandler {
             await client.end();
         }
     };
+    fetchMunicipalities = async (ely: string): Promise<number[]> => {
+        const client = await getClient()
+        try {
+            await client.connect()
+            const sql = `select id from municipality where ely_nro = ${Number(ely)};`
+            const query = {
+                text: sql,
+                rowMode: 'array',
+            }
+            const result = await client.query(query)
+            return result.rows.map((row: [number]) => row[0])
+        } catch (err) {
+            console.log('err', err)
+        } finally {
+            await client.end()
+        }
+        throw '500: something weird happened'
+    }
 
     async getPropertyId(publicId: string, typeId: number): Promise<number> {
         const client = await getClient();

@@ -1,25 +1,11 @@
-import {getClient} from "./fetchAndProcess";
-import {
-    RoadLink,
-    AssetHandler,
-    AssetInLink,
-    AssetInLinkIndex,
-    AssetWithLinkData,
-    DbAsset,
-    VelhoAsset,
-    VelhoLinearAsset
-} from "./assetHandler";
-import { getClient } from "./fetchAndProcess";
-import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData, VelhoLinearAsset} from "./assetHandler";
-import { VelhoLinearAsset } from "./assetHandler";
-import {chunkData, retryTimeout, timer} from "./utils";
-import {VelhoPavementAsset} from "./pavementHandler";
-import {performance} from "perf_hooks";
-import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
-import { getClient } from "./utils";
-import {AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData, RoadLink} from "./assetHandler";
-import { VelhoLinearAsset } from "./assetHandler";
-import { retryTimeout } from "./utils";
+import {AssetHandler} from "./assetHandler";
+import {DbAsset, LinkInformation, RoadLink} from "./type/type";
+import {AssetWithLinkData, VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
+import {chunkData, retryTimeout, timer} from "./utils/utils";
+import {getClient} from "./utils/AWSUtils";
+export interface AssetInLinkIndex {
+    [index: string]:  Set<AssetInLink>;
+}
 
 export interface ValidVKMFeature {
     properties: {
@@ -39,16 +25,10 @@ export interface ValidVKMFeature {
         etaisyys: number;
     };
 }
-
-export interface InvalidVKMFeature {
-    properties: {
-        virheet: string;
-    };
+export interface AssetInLink {
+    asset: VelhoAsset;
+    linkData: LinkInformation;
 }
-
-export type VKMResponseForRoadAddress = {
-    features: (ValidVKMFeature | InvalidVKMFeature)[];
-};
 
 interface LinkData {
     tie: number | undefined;
@@ -83,6 +63,31 @@ export interface LinearAsset {
     value: any;
 }
 
+
+export interface InvalidVKMFeature {
+    properties: {
+        virheet: string;
+    };
+}
+
+export type VKMResponseForRoadAddress = {
+    features: (ValidVKMFeature | InvalidVKMFeature)[];
+};
+
+interface VKMPayload 
+    {
+        tie: number;
+        osa: number;
+        etaisyys: number;
+        osa_loppu: number;
+        etaisyys_loppu: number;
+        tunniste: string;
+        palautusarvot: string;
+        valihaku: boolean;
+        ajr?:string;
+
+    }
+
 export class LinearAssetHandler extends AssetHandler {
 
     override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
@@ -95,44 +100,6 @@ export class LinearAssetHandler extends AssetHandler {
             notTouched: diff.notTouched
         };
     }
-
-    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
-        const sourceLinearAssets = srcData as VelhoLinearAsset[]
-        const isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
-            return !('virheet' in feature.properties)
-        }
-
-        const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
-            const R: T[][] = [];
-            for (let i = 0, len = array.length; i < len; i += chunkSize) {
-                R.push(array.slice(i, i + chunkSize));
-            }
-            return R;
-        };
-
-        const fetchVKM = async (body: string): Promise<VKMResponseForRoadAddress> => {
-            const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'X-API-KEY': `${vkmApiKey}`
-                },
-                body: `json=${body}`,
-            });
-            if (!response.ok) {
-                throw new Error(`Error: ${response.statusText}`);
-            }
-    override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
-        const diff = super.calculateDiff(srcData, currentData);
-
-        return {
-            added: diff.added as VelhoLinearAsset[],
-            expired: diff.expired,
-            updated: diff.updated as VelhoLinearAsset[],
-            notTouched: diff.notTouched
-        };
-    }
-
     filterNonCerterlineAssetsAway(srcData: VelhoLinearAsset[]): VelhoLinearAsset[] {
         const allowed =  ["kaistat","ajoradat"]
         return srcData.filter(s => {
@@ -140,12 +107,11 @@ export class LinearAssetHandler extends AssetHandler {
         })
     };
 
-
     private isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
         return !('virheet' in feature.properties)
     }
-    
-    private fetchVKM = async (body: string,vkmApiKey:string): Promise<VKMResponseForRoadAddress> => {
+
+   private fetchVKM = async (body: string,vkmApiKey:string): Promise<VKMResponseForRoadAddress> => {
         const begin = performance.now();
         const response= await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
             method: 'POST',
@@ -168,7 +134,7 @@ export class LinearAssetHandler extends AssetHandler {
 
         return vkmResponse
     };
-    
+        
     getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
         const sourceLinearAssets = srcData as VelhoLinearAsset[]
         if (sourceLinearAssets.length === 0) {
@@ -267,8 +233,9 @@ export class LinearAssetHandler extends AssetHandler {
                         etaisyys_loppu: c.loppusijainti?.etaisyys,
                         tunniste: c.oid,
                         palautusarvot: '4,6',
-                        valihaku: true
-                    }
+                        valihaku: true,
+                        
+                    } as VKMPayload
                     const roadways = c.sijaintitarkenne.ajoradat || [];
                     const roadwayNumbers = roadways.map(ajorata => ajorata.match(/\d+/)).filter(match => match !== null).map(match => match[0])
                     if (roadwayNumbers.length > 0) {
@@ -350,7 +317,7 @@ export class LinearAssetHandler extends AssetHandler {
         })
         sortedByLink.forEach(a => {
                 // tässä tarvittan jokin metodi joka hakee leikkaus ehdon per tietolaji
-                const p = a.asset as VelhoPavementAsset
+                const p = a.asset 
                 const link = a.linkData
                 const nextAsset = sortedByLink.find(a1 => link.mValueEnd == a1.linkData.mValue && link.mValue < a1.linkData.mValue && a1.asset.oid != p.oid)
                 const beforeAsset = sortedByLink.find(a1 => link.mValue == a1.linkData.mValueEnd && a1.linkData.mValue > link.mValue && a1.asset.oid != p.oid)
@@ -365,20 +332,20 @@ export class LinearAssetHandler extends AssetHandler {
 
                 if (nextAsset || beforeAsset) {
                     if (nextAsset) {
-                        console.log("assets create continues part, can be joined on " + nextAsset.asset.oid)
-                        console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                        //console.log("assets create continues part, can be joined on " + nextAsset.asset.oid)
+                        //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
                     }
                     if (beforeAsset) {
-                        console.log("assets create continues part, can be joined on " + beforeAsset.asset.oid)
-                        console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                        //console.log("assets create continues part, can be joined on " + beforeAsset.asset.oid)
+                        //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
                     }
                 }
                 if (overlap) {
-                    console.log("asset create overlapping part with " + overlap.asset.oid)
-                    console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                    //console.log("asset create overlapping part with " + overlap.asset.oid)
+                    //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
                 } else {
-                    console.log("no overlapping or continues")
-                    console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
+                    //console.log("no overlapping or continues")
+                    //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
                 }
             }
         )
@@ -454,8 +421,6 @@ export class LinearAssetHandler extends AssetHandler {
     };
 
     async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[],links:RoadLink[]): Promise<void> {
-        
-        
         //await this.saveNewAssets(asset_type_id, newAssets)
         //await this.updateAssets(asset_type_id, newAssets)
     }

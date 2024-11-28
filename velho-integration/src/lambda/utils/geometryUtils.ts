@@ -1,5 +1,6 @@
 import {LineString, Point} from 'wkx';
-import {SideCode} from "./enumerations";
+import {SideCode} from "../type/type";
+
 
 const DefaultEpsilon = 1e-9;
 

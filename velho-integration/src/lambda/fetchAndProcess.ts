@@ -3,11 +3,8 @@ import { PointAssetHandler } from "./pointAssetHandler";
 import { LinearAssetHandler } from "./linearAssetHandler";
 import { PavementHandler } from "./pavementHandler";
 import { TrafficSignHandler } from "./trafficSignHandler";
-import {authenticate, fetchMunicipalities, getVkmApiKey, timer} from "./utils";
-
-import {PavementHandler, VelhoPavementAsset} from "./pavementHandler";
-import {timer} from "./utils";
-import {AssetInLink, AssetInLinkIndex, AssetWithLinkData, VelhoAsset} from "./assetHandler";
+import {authenticate, getVkmApiKey} from "./utils/AWSUtils";
+import {timer} from "./utils/utils";
 
 const agent = new Agent({
     connect: {
@@ -49,17 +46,8 @@ export const handler = async (event: { ely: string, asset_name: string, asset_ty
         console.log('No assets to process after filtering.')
         return
     }
-    const occurrences = {};
-    filteredSrc.map(a => a.oid).forEach(a=> {
-        occurrences[a] = (occurrences[a] || 0) + 1;
-    })
-    Object.keys(occurrences).forEach(oid => {
-        if (occurrences[oid] > 1) {
-            console.log(`Duplicate oid found: ${oid} appears ${occurrences[oid]} times.`);
-        }
-    });
     
-    const municipalities = await fetchMunicipalities(ely)
+    const municipalities = await assetHandler.fetchMunicipalities(ely)
     console.log(`municipalities to process: ${municipalities.join(',')}`)
     const currentData = await assetHandler.fetchDestData(asset_type_id, municipalities)
 

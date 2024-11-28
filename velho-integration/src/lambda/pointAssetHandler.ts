@@ -1,5 +1,8 @@
-import { getClient } from "./fetchAndProcess"
-import {AssetHandler, VelhoAsset, VelhoPointAsset, DbAsset, AssetWithLinkData, RoadLink} from "./assetHandler"
+
+import {AssetWithLinkData, VelhoAsset, VelhoPointAsset} from "./type/velhoAsset";
+import {AssetHandler} from "./assetHandler";
+import {DbAsset, RoadLink} from "./type/type";
+import {getClient} from "./utils/AWSUtils";
 
 export interface VKMResponseForPoint {
     features: {
@@ -114,6 +117,7 @@ export class PointAssetHandler extends AssetHandler {
             throw new Error("Erroe during vkm fetch")
         }
     }
+
 
     override filterRoadLinks(assetsWithLinkData: AssetWithLinkData[],links:RoadLink[]): AssetWithLinkData[] {
         if (assetsWithLinkData.length === 0) {

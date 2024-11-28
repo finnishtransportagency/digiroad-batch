@@ -1,5 +1,6 @@
-import {Track, VelhoRoadSide, SideCode, VelhoValidityDirection} from '../src/lambda/enumerations';
-import {VelhoTrafficSignAsset, TrafficSignHandler} from '../src/lambda/trafficSignHandler';
+import {TrafficSignHandler, VelhoTrafficSignAsset} from "../src/lambda/trafficSignHandler";
+import {SideCode} from "../src/lambda/type/type";
+import {VelhoRoadSide, VelhoValidityDirection} from "../src/lambda/type/velhoAsset";
 
 
 const assetHandler = new TrafficSignHandler

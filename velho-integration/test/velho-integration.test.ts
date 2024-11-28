@@ -1,7 +1,7 @@
-import { VelhoAsset, VelhoPointAsset } from '../src/lambda/assetHandler';
-import { PointAssetHandler } from '../src/lambda/pointAssetHandler';
-import { DbAsset } from '../src/lambda/assetHandler';
-import { Track, VelhoRoadSide, SideCode, VelhoValidityDirection} from '../src/lambda/enumerations';
+import {VelhoPointAsset} from "../src/lambda/type/velhoAsset";
+import {DbAsset} from "../src/lambda/type/type";
+import {PointAssetHandler} from "../src/lambda/pointAssetHandler";
+
 
 const srcData: VelhoPointAsset[] = [
   {

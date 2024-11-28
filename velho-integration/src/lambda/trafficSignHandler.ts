@@ -1,7 +1,4 @@
-import { PointAssetHandler } from "./pointAssetHandler";
-import {AssetWithLinkData, VelhoPointAsset} from "./assetHandler";
-import {VelhoRoadSide, SideCode, VelhoValidityDirection, ValidityDirectionRoadAddress } from './enumerations';
-import {getClient} from "./utils";
+import { PointAssetHandler } from './pointAssetHandler';
 import {
     getCoatingTypeDigiroadValue,
     getConditionDigiroadValue,
@@ -9,6 +6,8 @@ import {
     getStructureDigiroadValue,
     getTrafficSignTypeDigiroadValue, getTypeOfDamageDigiroadValue, getUrgencyOfRepairDigiroadValue
 } from "./trafficSignValueMappings";
+import {VelhoPointAsset, VelhoRoadSide, VelhoValidityDirection} from "./type/velhoAsset";
+import {SideCode, ValidityDirectionRoadAddress} from "./type/type";
 
 export interface VelhoTrafficSignAsset extends VelhoPointAsset {
     ominaisuudet: {
