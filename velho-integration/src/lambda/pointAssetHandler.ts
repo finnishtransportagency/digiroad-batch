@@ -28,7 +28,6 @@ export class PointAssetHandler extends AssetHandler {
         await this.saveNewAssets(asset_type_id, newAssets)
         await this.updateAssets(asset_type_id, newAssets)
     }
-
     getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
         const sourcePointAssets = srcData as VelhoPointAsset[]
         const chunkSize = 50
@@ -40,6 +39,8 @@ export class PointAssetHandler extends AssetHandler {
             return R;
         };
 
+        const fetchVKM = async (src: VelhoPointAsset[]) => {
+            const locationAndReturnValue = src.map(s => {
         const fetchVKM = async (src: VelhoAsset[]) => {
             const locationAndReturnValue = (src  as VelhoPointAsset[]).filter( a=> a.sijainti?.tie !=undefined).map(s => {
                 const roadways = s.sijaintitarkenne.ajoradat || [];

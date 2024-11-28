@@ -361,4 +361,8 @@ export abstract class AssetHandler {
         }
     };
 
+    abstract saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]): Promise<void>;
+
+    abstract updateAssets(assetsToUpdate: AssetWithLinkData[]): Promise<void>;
+
 }

@@ -15,6 +15,9 @@ import { VelhoLinearAsset } from "./assetHandler";
 import {chunkData, retryTimeout, timer} from "./utils";
 import {VelhoPavementAsset} from "./pavementHandler";
 import {performance} from "perf_hooks";
+import { AssetHandler, VelhoAsset, DbAsset, AssetWithLinkData} from "./assetHandler";
+import { VelhoLinearAsset } from "./assetHandler";
+import { retryTimeout } from "./utils";
 
 export interface ValidVKMFeature {
     properties: {
@@ -80,6 +83,43 @@ export interface LinearAsset {
 
 export class LinearAssetHandler extends AssetHandler {
 
+    override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
+        const diff = super.calculateDiff(srcData, currentData);
+
+        return {
+            added: diff.added as VelhoLinearAsset[],
+            expired: diff.expired,
+            updated: diff.updated as VelhoLinearAsset[],
+            notTouched: diff.notTouched
+        };
+    }
+
+    getRoadLinks = async (srcData: VelhoAsset[], vkmApiKey: string): Promise<AssetWithLinkData[]> => {
+        const sourceLinearAssets = srcData as VelhoLinearAsset[]
+        const isValidVKMFeature = (feature: ValidVKMFeature | InvalidVKMFeature): feature is ValidVKMFeature => {
+            return !('virheet' in feature.properties)
+        }
+
+        const chunkData = <T>(array: T[], chunkSize: number): T[][] => {
+            const R: T[][] = [];
+            for (let i = 0, len = array.length; i < len; i += chunkSize) {
+                R.push(array.slice(i, i + chunkSize));
+            }
+            return R;
+        };
+
+        const fetchVKM = async (body: string): Promise<VKMResponseForRoadAddress> => {
+            const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-API-KEY': `${vkmApiKey}`
+                },
+                body: `json=${body}`,
+            });
+            if (!response.ok) {
+                throw new Error(`Error: ${response.statusText}`);
+            }
     override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
         const diff = super.calculateDiff(srcData, currentData);
 
