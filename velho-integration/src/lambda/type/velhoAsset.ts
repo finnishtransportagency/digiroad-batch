@@ -11,9 +11,9 @@ export enum VelhoRoadSide {
 
 // VelhoValidityDirection describes the validity direction in relation to lane's traffic direction
 export enum VelhoValidityDirection {
-    TowardsTrafficDirection = 1,      // liivasu01 
-    AgainstTrafficDirection = 2,       // liivasu02 
-    LengthwiseTrafficDirection = 3,    // liivasu03 
+    TowardsTrafficDirection = "liikennemerkki-vaikutussuunta/liivasu01",      // liivasu01
+    AgainstTrafficDirection = "liikennemerkki-vaikutussuunta/liivasu02",       // liivasu02
+    LengthwiseTrafficDirection = "liikennemerkki-vaikutussuunta/liivasu03",    // liivasu03
 }
 
 export interface VelhoAsset {
