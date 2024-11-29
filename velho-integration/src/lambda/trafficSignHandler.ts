@@ -2,12 +2,17 @@ import { PointAssetHandler } from './pointAssetHandler';
 import {
     getCoatingTypeDigiroadValue,
     getConditionDigiroadValue,
-    getLocationSpecifierSideDigiroadValue, getSignMaterialDigiroadValue, getSizeDigiroadValue,
+    getLocationSpecifierSideDigiroadValue,
+    getSignMaterialDigiroadValue,
+    getSizeDigiroadValue,
     getStructureDigiroadValue,
-    getTrafficSignTypeDigiroadValue, getTypeOfDamageDigiroadValue, getUrgencyOfRepairDigiroadValue
+    getTrafficSignTypeDigiroadValue,
+    getTypeOfDamageDigiroadValue,
+    getUrgencyOfRepairDigiroadValue,
 } from "./trafficSignValueMappings";
-import {VelhoPointAsset, VelhoRoadSide, VelhoValidityDirection} from "./type/velhoAsset";
-import {SideCode, ValidityDirectionRoadAddress} from "./type/type";
+import {AssetWithLinkData, VelhoPointAsset, VelhoRoadSide, VelhoValidityDirection} from "./type/velhoAsset";
+import {RoadLink, SideCode, ValidityDirectionRoadAddress} from "./type/type";
+import {calculateRoadLinkBearing, getAssetSideCodeByBearing} from "./utils/geometryUtils";
 
 export interface VelhoTrafficSignAsset extends VelhoPointAsset {
     ominaisuudet: {
@@ -112,16 +117,29 @@ export class TrafficSignHandler extends PointAssetHandler {
   }
 
 
-    velhoAssetToDigiroadAsset(velhoTrafficSignAsset: VelhoTrafficSignAsset, assetTypeId: number) {
+    velhoAssetToDigiroadAsset(assetWithLinkData: AssetWithLinkData, roadLink: RoadLink, roadAddressSideCode: SideCode) {
+        const velhoTrafficSignAsset = assetWithLinkData.asset as VelhoTrafficSignAsset;
         const externalId = velhoTrafficSignAsset.oid;
+
         const geometry = velhoTrafficSignAsset.keskilinjageometria;
-        const velhoBearing = velhoTrafficSignAsset.ominaisuudet["rakenteelliset-ominaisuudet"].suunta;
+        const trafficSignBearing = velhoTrafficSignAsset.ominaisuudet["rakenteelliset-ominaisuudet"].suunta;
+        const roadLinkBearing = calculateRoadLinkBearing(roadLink.shape, assetWithLinkData.linkData[0].mValue)
 
-        //TODO Save road link bearing to asset.bearing
-        //const bearingDigiroadValue =
-
-        //Todo Add calculating sideCode
-        // const sideCodeDigiroadValue =
+        let sideCodeDigiroadValue: number;
+        if(trafficSignBearing) {
+            sideCodeDigiroadValue = getAssetSideCodeByBearing(trafficSignBearing, roadLinkBearing)
+        } else {
+            let velhoRoadSideValue: VelhoRoadSide;
+            let velhoValidityDirectionValue: VelhoValidityDirection;
+            if(velhoTrafficSignAsset.sijaintitarkenne.puoli && velhoTrafficSignAsset.ominaisuudet["toiminnalliset-ominaisuudet"].vaikutussuunta) {
+                velhoRoadSideValue = velhoTrafficSignAsset.sijaintitarkenne.puoli as VelhoRoadSide;
+                velhoValidityDirectionValue = velhoTrafficSignAsset.ominaisuudet["toiminnalliset-ominaisuudet"].vaikutussuunta as VelhoValidityDirection;
+            }
+            else {
+                throw new Error(`Asset OID: ${externalId} has invalid Velho puoli or vaikutussuunta value`)
+            }
+            sideCodeDigiroadValue = this.calculateTrafficSignValidityDirection(roadAddressSideCode, velhoRoadSideValue,velhoValidityDirectionValue)
+        }
 
         const terrainCoordinates = velhoTrafficSignAsset.mitattugeometria?.geometria
 

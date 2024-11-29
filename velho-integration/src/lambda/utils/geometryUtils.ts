@@ -4,7 +4,7 @@ import {SideCode} from "../type/type";
 
 const DefaultEpsilon = 1e-9;
 
-export function calculateBearing(geom: LineString, pointMValue: number): number {
+export function calculateRoadLinkBearing(geom: LineString, pointMValue: number): number {
     const points = geom.points;
     if (points.length < 2) throw new Error("Geometry must have at least 2 points");
 
@@ -19,15 +19,27 @@ export function calculateBearing(geom: LineString, pointMValue: number): number 
     return Math.round(180 + rad * (180 / Math.PI));
 }
 
-export function getSideCodeByGeometry(assetLocation: Point, roadLinkPoint: Point, linkBearing: number): number {
-    const latDifference = assetLocation.y - roadLinkPoint.y;
+export function getAssetSideCodeByBearing(assetBearing: number, roadLinkBearing: number): number {
+    const toleranceInDegrees = 25;
 
-    const isTowardsDigitizing =
-        (latDifference <= 0 && linkBearing <= 90) || (latDifference >= 0 && linkBearing > 270);
+    function getAngle(b1: number, b2: number): number {
+        return 180 - Math.abs(Math.abs(b1 - b2) - 180);
+    }
 
-    if(isTowardsDigitizing) return SideCode.TowardsDigitizing;
-    else return SideCode.AgainstDigitizing;
+    const reverseRoadLinkBearing =
+        (roadLinkBearing - 180 < 0) ?
+            roadLinkBearing + 180 :
+            roadLinkBearing - 180;
+
+    if (getAngle(assetBearing, roadLinkBearing) <= toleranceInDegrees) {
+        return SideCode.TowardsDigitizing;
+    } else if (Math.abs(assetBearing - reverseRoadLinkBearing) <= toleranceInDegrees) {
+        return SideCode.AgainstDigitizing;
+    } else {
+        return SideCode.Unknown;
+    }
 }
+
 
 
 function calculatePointFromMeasure(points: Point[], measure: number): Point | null {
