@@ -3,10 +3,10 @@ import {LinkInformation} from "./type";
 
 // VelhoRoadSide describes the location in relation to the road and it's road address's direction of growth
 export enum VelhoRoadSide {
-    Right = 1,      // p01
-    Left = 2,       // p02
-    Between = 3,    // p03
-    Across = 6      // p06
+    Right = "puoli/p01",
+    Left = "puoli/p02",
+    Between = "puoli/p03",
+    Across = "puoli/p06"
 }
 
 // VelhoValidityDirection describes the validity direction in relation to lane's traffic direction
