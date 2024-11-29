@@ -23,7 +23,7 @@ export interface VelhoTrafficSignAsset extends VelhoPointAsset {
         "rakenteelliset-ominaisuudet": {
             arvo: number | null;
             koko: string | null;
-            suunta: string | null;
+            suunta: number | null;
             materiaali: string | null;
             kalvotyyppi: string | null;
             korkeusasema: string | null;
