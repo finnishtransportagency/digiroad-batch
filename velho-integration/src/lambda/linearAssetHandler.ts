@@ -1,11 +1,12 @@
 import {AssetHandler} from "./assetHandler";
-import {DbAsset, LinkInformation, RoadLink} from "./type/type";
+import {DbAsset, DRValue, LinkInformation, RoadLink} from "./type/type";
 import {AssetWithLinkData, VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
 import {chunkData, retryTimeout, timer} from "./utils/utils";
 import {getClient} from "./utils/AWSUtils";
-export interface AssetInLinkIndex {
-    [index: string]:  Set<AssetInLink>;
-}
+// @ts-ignore
+import { log } from "console";
+
+let console = require('console');
 
 export interface ValidVKMFeature {
     properties: {
@@ -47,20 +48,27 @@ interface LinkData {
     etaisyys_loppu: number;
 }
 
+export interface AssetInLinkIndex {
+    [index: string]: Set<LinearAsset>;
+}
 export interface LinearAsset {
-    externalIds: string[]; // or specify a more precise type if known
+    externalIds: string[];
     LRM: {
+        linkId:string;
+        municipalityCode: number;
+        sideCode?: number;
         mValue: number;
         mValueEnd: number;
     };
-    roadaddress?: {
+    roadAddress?: {
         tie: number;
         ajorata: number;
         osa: number;
         etaisyys: number;
         etaisyys_loppu: number;
     };
-    value: any;
+    velhoValue: VelhoAsset[];
+    digiroadValue?: DRValue[];
 }
 
 
@@ -74,8 +82,7 @@ export type VKMResponseForRoadAddress = {
     features: (ValidVKMFeature | InvalidVKMFeature)[];
 };
 
-interface VKMPayload 
-    {
+interface VKMPayload {
         tie: number;
         osa: number;
         etaisyys: number;
@@ -85,9 +92,13 @@ interface VKMPayload
         palautusarvot: string;
         valihaku: boolean;
         ajr?:string;
+}
 
-    }
-
+interface ValueAndJoin {
+    values: any;
+    shouldWeJoin: boolean;
+}
+    
 export class LinearAssetHandler extends AssetHandler {
 
     override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
@@ -288,77 +299,107 @@ export class LinearAssetHandler extends AssetHandler {
             };
         }).filter(asset => asset.linkData.length > 0) as AssetWithLinkData[];
     };
-
-    jointAssetsByCommonDenominator  (asset_type_id: number, newAssets: AssetWithLinkData[]) {
+    // override with your own mapping logic 
+    mapVelhoToDR (asset:VelhoAsset):DRValue{
+         return  {value:asset.oid } as DRValue
+    }
+    
+    velhoAssetToLinearAssets  (asset_type_id: number, newAssets: AssetWithLinkData[]): AssetInLinkIndex {
         const assetInLinkIndex: AssetInLinkIndex = {}
         newAssets.forEach(a => {
             a.linkData.forEach(a1 => {
+                const asset = {
+                    externalIds: [a.asset.oid],
+                    LRM: {linkId:a1.linkId,municipalityCode:a1.municipalityCode,sideCode:a1.sideCode, mValue: a1.mValue, mValueEnd: a1.mValueEnd},
+                    roadAddress: {ajorata: a1.roadadress?.ajorata, etaisyys: a1.roadadress?.etaisyys,
+                        etaisyys_loppu: a1.roadadress?.etaisyys_loppu, osa: a1.roadadress?.osa, tie: 0},
+                    velhoValue: [a.asset],
+                    digiroadValue: [this.mapVelhoToDR(a.asset)]
+                } as LinearAsset
                 if (assetInLinkIndex[a1.linkId] == undefined || assetInLinkIndex[a1.linkId].size == 0) {
-                    const newSet = new Set<AssetInLink>();
-                    assetInLinkIndex[a1.linkId] = newSet.add({linkData: a1, asset: a.asset} as AssetInLink);
-                } else assetInLinkIndex[a1.linkId].add({linkData: a1, asset: a.asset} as AssetInLink) // lopullisesta huomioi duplikaatit
+                    const newSet = new Set<LinearAsset>();
+                    assetInLinkIndex[a1.linkId] = newSet.add(asset);
+                } else assetInLinkIndex[a1.linkId].add(asset) // lopullisesta huomioi duplikaatit
             })
         })
+        return assetInLinkIndex
+    }
+    
+    handleLink(assetPerLRM: LinearAsset[]): LinearAsset[] {
+        const initialMapping =assetPerLRM
+            .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue})
+        // Define a series of processing steps
+        const steps: ((assets: LinearAsset[]) => LinearAsset[])[] = [
+            this.attemptMerge,
+            //this.fillLink, // Example - Additional processing step
+        ];
+        const processPipeline = (start: LinearAsset[], steps: ((assets: LinearAsset[]) => LinearAsset[])[]) => 
+            steps.reduce((acc, step) => step(acc), start);
+        
+        return processPipeline(initialMapping, steps);
+    }
 
-        Object.keys(assetInLinkIndex).forEach(key => {
-            if (assetInLinkIndex[key].size > 1) {
-                this.jointAssets(assetInLinkIndex, key);
+    private attemptMerge(assets: LinearAsset[]): LinearAsset[] {
+        const [newAssets, somethingChanged] = this.mergeStep(assets);
+
+        // If no changes were made, return the newAssets.
+        if (!somethingChanged) return newAssets;
+
+        // Recursively try merging again
+        return this.attemptMerge(newAssets);
+    }
+    private mergeStep(assets: LinearAsset[]): [LinearAsset[], boolean] {
+        let somethingChanged = false;
+
+        const newAssets = assets.reduce((accumulator: LinearAsset[], currentItem: LinearAsset, index, array) => {
+            if (index < array.length - 1) {
+                const nextAsset = array[index + 1];
+                if (nextAsset){
+                    let merged = this.merge(nextAsset, currentItem);
+                    if (merged) {
+                        somethingChanged = true;
+                        return accumulator.concat(merged)
+                    } else return accumulator.concat(currentItem)
+                }else return accumulator.concat(currentItem)
             }
-        })
-    }
-    private jointAssets(assetInLinkIndex: AssetInLinkIndex, key: string) {
-        const assetPerLRM = [...assetInLinkIndex[key]];
-        this.handleLink(assetPerLRM);
-    }
+            return accumulator.concat(currentItem);
+        }, []);
 
-    handleLink(assetPerLRM: AssetInLink[]):LinearAsset[] {
-        const sortedByLink = assetPerLRM.sort((a, b) => {
-            return a.linkData.mValue - b.linkData.mValue
-        })
-        sortedByLink.forEach(a => {
-                // tässä tarvittan jokin metodi joka hakee leikkaus ehdon per tietolaji
-                const p = a.asset 
-                const link = a.linkData
-                const nextAsset = sortedByLink.find(a1 => link.mValueEnd == a1.linkData.mValue && link.mValue < a1.linkData.mValue && a1.asset.oid != p.oid)
-                const beforeAsset = sortedByLink.find(a1 => link.mValue == a1.linkData.mValueEnd && a1.linkData.mValue > link.mValue && a1.asset.oid != p.oid)
-                const overlap = sortedByLink.find(a1 => a1.linkData.mValue <= link.mValue || a1.linkData.mValueEnd >= link.mValueEnd && a1.asset.oid != p.oid)
-
-                const newAsset: LinearAsset = {
-                    externalIds: [p.oid],
-                    LRM: {mValue: 0, mValueEnd: 0},
-                    roadaddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
-                    value: ""
-                }
-
-                if (nextAsset || beforeAsset) {
-                    if (nextAsset) {
-                        //console.log("assets create continues part, can be joined on " + nextAsset.asset.oid)
-                        //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                    }
-                    if (beforeAsset) {
-                        //console.log("assets create continues part, can be joined on " + beforeAsset.asset.oid)
-                        //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                    }
-                }
-                if (overlap) {
-                    //console.log("asset create overlapping part with " + overlap.asset.oid)
-                    //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                } else {
-                    //console.log("no overlapping or continues")
-                    //console.log(`${p.oid} : ${p.ominaisuudet?.velhoSource} : ${p.ominaisuudet?.tyyppi} : ${JSON.stringify(p.alkusijainti)}: ${JSON.stringify(p.loppusijainti)} : ${JSON.stringify(p.sijaintitarkenne)} : ${JSON.stringify(link)}`)
-                }
-            }
-        )
-        const newAsset: LinearAsset = {
-            externalIds: ["1"],
-            LRM: {mValue: 0, mValueEnd: 0},
-            roadaddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
-            value: ""
-        }
-        return [newAsset]
+        return [newAssets, somethingChanged];
     }
 
-    async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
+    merge(nextAsset:LinearAsset, currentItem: LinearAsset):LinearAsset | undefined {
+        const isNext = currentItem.LRM.mValueEnd == nextAsset.LRM.mValue && currentItem.LRM.mValue < nextAsset.LRM.mValue
+        const {values,shouldWeJoin}= this.getValueAndShouldWeJoin(nextAsset,currentItem)
+        if (isNext && shouldWeJoin) {
+            if (typeof values !== 'undefined'){
+                return {
+                    externalIds: currentItem.externalIds.concat(nextAsset.externalIds),
+                    LRM: {mValue: currentItem.LRM.mValue, mValueEnd: nextAsset.LRM.mValueEnd},
+                    roadAddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
+                    digiroadValue: values,
+                    velhoValue: currentItem.velhoValue.concat(nextAsset.velhoValue)
+                } as LinearAsset
+            } else return undefined;
+        } else return undefined;
+    }
+    
+     fillLink() {
+        return (list, currentItem: LinearAsset, currentIndex: number, array: LinearAsset[]): LinearAsset[] => {
+            return list;
+        };
+    }
+    /*
+        Generic method determinate should we join two asset. Override with your own implementation as needed.
+     */
+    getValueAndShouldWeJoin (compare:LinearAsset, currentItem: LinearAsset) {
+        if (JSON.stringify(compare.digiroadValue) == JSON.stringify(currentItem.digiroadValue)) {
+            return {values:currentItem.digiroadValue,shouldWeJoin: true} as ValueAndJoin
+        } else return {values:currentItem.digiroadValue,shouldWeJoin: false } as ValueAndJoin
+    }
+
+
+    async saveNewAssets(asset_type_id: number, newAssets: LinearAsset[]) {
 
         if (newAssets.length === 0) {
             console.log("No assets to save.")
@@ -372,8 +413,7 @@ export class LinearAssetHandler extends AssetHandler {
             await client.connect();
 
             await client.query('BEGIN');
-            const insertPromises = newAssets.map((assetWithLinkData) => {
-                (assetWithLinkData.linkData || []).map(async (linkData) => {
+            const insertPromises = newAssets.map(async (assetWithLinkData) => {
                     const insertSql = `
                     WITH asset_insert AS (
                         INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code)
@@ -388,20 +428,18 @@ export class LinearAssetHandler extends AssetHandler {
                     INSERT INTO asset_link (asset_id, position_id)
                     VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert));
                 `;
-
                     await client.query(insertSql, [
-                        assetWithLinkData.asset.oid,
+                        assetWithLinkData.externalIds,
                         asset_type_id,
                         'Tievelho-import',
-                        linkData.municipalityCode,
-                        linkData.mValue,
-                        linkData.mValueEnd,
-                        linkData.linkId,
-                        linkData.sideCode,
+                        assetWithLinkData.LRM.municipalityCode,
+                        assetWithLinkData.LRM.mValue,
+                        assetWithLinkData.LRM.mValueEnd,
+                        assetWithLinkData.LRM.linkId,
+                        assetWithLinkData.LRM.sideCode,
                         timeStamp,
                         1 // normal link interface
                     ]);
-                })
             });
 
             await Promise.all(insertPromises);
@@ -415,13 +453,23 @@ export class LinearAssetHandler extends AssetHandler {
         }
     };
 
-    updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]): Promise<void> {
+    updateAssets(asset_type_id: number, assetsToUpdate: LinearAsset[][]): Promise<void> {
         //Placeholder logic
         return new Promise<void>((resolve, reject) => {resolve();}); 
-    };
+    }
 
     async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[],links:RoadLink[]): Promise<void> {
-        //await this.saveNewAssets(asset_type_id, newAssets)
+        // muunna linear Asset ja map arvot DR
+        const newLinearAssets= this.velhoAssetToLinearAssets(asset_type_id,newAssets)
+        const assetsToUpdateLinear =  this.velhoAssetToLinearAssets(asset_type_id,assetsToUpdate)
+
+        const assets =Object.keys(newLinearAssets).flatMap(key => {
+            if (newLinearAssets[key].size > 1) {
+                return this.handleLink([...newLinearAssets[key]]);
+            }
+        })
+        
+        await this.saveNewAssets(asset_type_id, assets)
         //await this.updateAssets(asset_type_id, newAssets)
     }
 }

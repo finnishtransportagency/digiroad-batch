@@ -12,6 +12,10 @@ export interface DbAsset {
     endMeasure: number | null,
     municipalitycode: number
 }
+
+export interface DRValue {
+    value:string
+}
 export interface LinkInformation {
     linkId: string;
     mValue: number;
