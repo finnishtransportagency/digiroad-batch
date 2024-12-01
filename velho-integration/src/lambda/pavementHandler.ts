@@ -1,6 +1,7 @@
 import { getClient } from "./utils/AWSUtils";
 import {LinearAssetHandler} from "./linearAssetHandler";
 import {AssetWithLinkData, VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
+import {DRValue} from "./type/type";
 
 export enum PavementClass {
     Asphalt = 1, //asfaltti
@@ -33,6 +34,17 @@ export class PavementHandler extends LinearAssetHandler {
 
     sourcesWithVersioning = ['ladottavat-pintarakenteet', 'muut-pintarakenteet']
 
+     asphaltSources = ['muu-materiaali/mm04', 'paallystetyyppi/pt01', 'paallystetyyppi/pt02', 'paallystetyyppi/pt03', 'paallystetyyppi/pt04',
+    'paallystetyyppi/pt08', 'paallystetyyppi/pt09', 'paallystetyyppi/pt10', 'paallystetyyppi/pt11', 'paallystetyyppi/pt12', 'paallystetyyppi/pt13',
+    'paallystetyyppi/pt14', 'paallystetyyppi/pt15', 'paallystetyyppi/pt16', 'paallystetyyppi/pt17', 'paallystetyyppi/pt18'
+]
+     cobblestoneSources = ['kiven-materiaali/km01', 'kiven-materiaali/km02', 'kiven-materiaali/km03']
+     unboundSources = ['muu-materiaali/mm03', 'muu-materiaali/mm09', 'sitomattoman-pintarakenteen-runkomateriaali/spr01',
+    'sitomattoman-pintarakenteen-runkomateriaali/spr02', 'sitomattoman-pintarakenteen-runkomateriaali/spr03']
+     otherSources = ['muu-materiaali/mm01', 'muu-materiaali/mm02', 'muu-materiaali/mm05', 'muu-materiaali/mm06', 'muu-materiaali/mm07',
+    'pintauksen-tyyppi/pintaus01', 'pintauksen-tyyppi/pintaus03', 'pintauksen-uusiomateriaali/pu', 'paallystetyyppi/pt07'
+]
+
     override fetchSource = async (token: string, ely: string, paths: string[]): Promise<VelhoAsset[]> => {
         const allVelhoAssets = await Promise.all(
             paths.map(async (path) => {
@@ -48,70 +60,53 @@ export class PavementHandler extends LinearAssetHandler {
     }
 
     filterByPavementTypeAndAddDRProperty = (srcData: VelhoPavementAsset[]): VelhoPavementAsset[] => { // TODO ei tehdä hash index vaan lisätään tämä tieto suoraan
-        const asphaltSources = ['muu-materiaali/mm04', 'paallystetyyppi/pt01', 'paallystetyyppi/pt02', 'paallystetyyppi/pt03', 'paallystetyyppi/pt04',
-            'paallystetyyppi/pt08', 'paallystetyyppi/pt09', 'paallystetyyppi/pt10', 'paallystetyyppi/pt11', 'paallystetyyppi/pt12', 'paallystetyyppi/pt13',
-            'paallystetyyppi/pt14', 'paallystetyyppi/pt15', 'paallystetyyppi/pt16', 'paallystetyyppi/pt17', 'paallystetyyppi/pt18'
-        ]
-        const cobblestoneSources = ['kiven-materiaali/km01', 'kiven-materiaali/km02', 'kiven-materiaali/km03']
-        const unboundSources = ['muu-materiaali/mm03', 'muu-materiaali/mm09', 'sitomattoman-pintarakenteen-runkomateriaali/spr01',
-            'sitomattoman-pintarakenteen-runkomateriaali/spr02', 'sitomattoman-pintarakenteen-runkomateriaali/spr03']
-        const otherSources = ['muu-materiaali/mm01', 'muu-materiaali/mm02', 'muu-materiaali/mm05', 'muu-materiaali/mm06', 'muu-materiaali/mm07',
-            'pintauksen-tyyppi/pintaus01', 'pintauksen-tyyppi/pintaus03', 'pintauksen-uusiomateriaali/pu', 'paallystetyyppi/pt07'
-        ]
-        const unknownTypeSources = ['muu-materiaali/mm08', 'paallystetyyppi/pt21']
+        const asphaltSources = this.asphaltSources
+        const cobblestoneSources = this.cobblestoneSources
+        const unboundSources = this.unboundSources
+        const otherSources = this.otherSources
+        const unknownTypeSources = this.unboundSources
         srcData.forEach(s => {
             const velhoSource = this.sourceByOid[s.oid]
             switch (velhoSource) {
                 case 'ladottavat-pintarakenteet':
                     if (s.ominaisuudet?.materiaali && cobblestoneSources.includes(s.ominaisuudet.materiaali)) {
                         this.pavementByOid[s.oid] = PavementClass.Cobblestone;
-                        s.ominaisuudet.drProperty =PavementClass.Cobblestone;
                     }
                     break
                 case 'muut-pintarakenteet':
                     if (s.ominaisuudet?.materiaali) {
                         if (asphaltSources.includes(s.ominaisuudet.materiaali)) {
                             this.pavementByOid[s.oid] = PavementClass.Asphalt;
-                            s.ominaisuudet.drProperty =PavementClass.Asphalt;
                         } else if (unboundSources.includes(s.ominaisuudet.materiaali)) {
                             this.pavementByOid[s.oid] = PavementClass.UnboundWearLayer
-                            s.ominaisuudet.drProperty =PavementClass.UnboundWearLayer;
                         } else if (otherSources.includes(s.ominaisuudet.materiaali)) {
                             this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
-                            s.ominaisuudet.drProperty =PavementClass.OtherPavementClasses;
                         } else if (unknownTypeSources.includes(s.ominaisuudet.materiaali)) {
                             this.pavementByOid[s.oid] = PavementClass.Unknown
-                            s.ominaisuudet.drProperty =PavementClass.Unknown;
                         }
                     }
                     break
                 case 'pintaukset':
                     if (s.ominaisuudet?.['pintauksen-tyyppi'] && otherSources.includes(s.ominaisuudet['pintauksen-tyyppi'])) {
                         this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
-                        s.ominaisuudet.drProperty =PavementClass.OtherPavementClasses;
                     } else if (s.ominaisuudet?.uusiomateriaali && otherSources.includes(s.ominaisuudet?.uusiomateriaali)) {
                         this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
-                        s.ominaisuudet.drProperty =PavementClass.OtherPavementClasses;
                     }
                     break
                 case 'sidotut-paallysrakenteet':
                     if (s.ominaisuudet?.tyyppi && s.ominaisuudet['paallysteen-tyyppi'] && s.ominaisuudet.tyyppi === 'sidotun-paallysrakenteen-tyyppi/spt01') {
                         if (asphaltSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
                             this.pavementByOid[s.oid] = PavementClass.Asphalt
-                            s.ominaisuudet.drProperty =PavementClass.Asphalt;
                         } else if (otherSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
                             this.pavementByOid[s.oid] = PavementClass.OtherPavementClasses
-                            s.ominaisuudet.drProperty =PavementClass.OtherPavementClasses;
                         } else if (unknownTypeSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
                             this.pavementByOid[s.oid] = PavementClass.Unknown
-                            s.ominaisuudet.drProperty =PavementClass.Unknown;
                         }
                     }
                     break
                 case 'sitomattomat-pintarakenteet':
                     if (s.ominaisuudet?.runkomateriaali && unboundSources.includes(s.ominaisuudet.runkomateriaali)) {
                         this.pavementByOid[s.oid] = PavementClass.UnboundWearLayer
-                        s.ominaisuudet.drProperty =PavementClass.UnboundWearLayer;
                     }
                     break
                 default:
@@ -121,6 +116,60 @@ export class PavementHandler extends LinearAssetHandler {
 
         return srcData.filter(s => Object.keys(this.pavementByOid).includes(s.oid))
     }
+
+    override mapVelhoToDR (asset:VelhoAsset):DRValue{
+        const s = asset as VelhoPavementAsset
+        const asphaltSources = this.asphaltSources
+        const cobblestoneSources = this.cobblestoneSources
+        const unboundSources = this.unboundSources
+        const otherSources = this.otherSources
+        const unknownTypeSources = this.unboundSources
+        const velhoSource = this.sourceByOid[s.oid]
+        
+        switch (velhoSource) {
+            case 'ladottavat-pintarakenteet':
+                if (s.ominaisuudet?.materiaali && cobblestoneSources.includes(s.ominaisuudet.materiaali)) {
+                    return  { value:PavementClass.Cobblestone.toString()}as DRValue
+                } else  throw new Error('Cannot map value')
+            case 'muut-pintarakenteet':
+                if (s.ominaisuudet?.materiaali) {
+                    if (asphaltSources.includes(s.ominaisuudet.materiaali)) {
+                        return  { value:PavementClass.Asphalt.toString()}as DRValue
+                    } else if (unboundSources.includes(s.ominaisuudet.materiaali)) {
+                        return  { value:PavementClass.UnboundWearLayer.toString()}as DRValue
+                    } else if (otherSources.includes(s.ominaisuudet.materiaali)) {
+                        return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                    } else if (unknownTypeSources.includes(s.ominaisuudet.materiaali)) {
+                        return  { value:PavementClass.Unknown.toString()}as DRValue
+                    } else  throw new Error('Cannot map value')
+                }
+                else  throw new Error('Cannot map value')
+            case 'pintaukset':
+                if (s.ominaisuudet?.['pintauksen-tyyppi'] && otherSources.includes(s.ominaisuudet['pintauksen-tyyppi'])) {
+                    return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                } else if (s.ominaisuudet?.uusiomateriaali && otherSources.includes(s.ominaisuudet?.uusiomateriaali)) {
+                    return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                }
+                else  throw new Error('Cannot map value')
+            case 'sidotut-paallysrakenteet':
+                if (s.ominaisuudet?.tyyppi && s.ominaisuudet['paallysteen-tyyppi'] && s.ominaisuudet.tyyppi === 'sidotun-paallysrakenteen-tyyppi/spt01') {
+                    if (asphaltSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
+                        return  { value:PavementClass.Asphalt.toString()}as DRValue
+                    } else if (otherSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
+                        return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                    } else if (unknownTypeSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
+                        return  { value:PavementClass.Unknown.toString()}as DRValue
+                    } else  throw new Error('Cannot map value')
+                } else  throw new Error('Cannot map value')
+            case 'sitomattomat-pintarakenteet':
+                if (s.ominaisuudet?.runkomateriaali && unboundSources.includes(s.ominaisuudet.runkomateriaali)) {
+                    return  { value:PavementClass.UnboundWearLayer.toString()}as DRValue
+                } else  throw new Error('Cannot map value')
+            default:
+                throw new Error('Cannot map value')
+    }
+    }
+    
 
     /**
      * This method performs first the parent class filter. Then it filters the velho assets on main lanes. 
@@ -145,7 +194,9 @@ export class PavementHandler extends LinearAssetHandler {
         return this.filterByPavementTypeAndAddDRProperty(necessaryAssets)
     };
 
-    override async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
+    /*
+    uudelleen tee tämä koko osio
+    async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
 
         if (newAssets.length === 0) {
             console.log("No assets to save.");
@@ -240,7 +291,7 @@ export class PavementHandler extends LinearAssetHandler {
         }
     };
 
-    override async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
+    async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
 
         const assetsWithVersioning = assetsToUpdate.filter(a => this.sourcesWithVersioning.includes(this.sourceByOid[a.asset.oid]));
 
@@ -361,6 +412,6 @@ export class PavementHandler extends LinearAssetHandler {
         } finally {
             await client.end();
         }
-    };
+    };*/
 
 }

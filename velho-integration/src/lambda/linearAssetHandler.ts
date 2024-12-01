@@ -55,7 +55,7 @@ export interface LinearAsset {
     externalIds: string[];
     LRM: {
         linkId:string;
-        municipalityCode: number;
+        municipalityCode?: number;
         sideCode?: number;
         mValue: number;
         mValueEnd: number;
@@ -67,8 +67,8 @@ export interface LinearAsset {
         etaisyys: number;
         etaisyys_loppu: number;
     };
-    velhoValue: VelhoAsset[];
-    digiroadValue?: DRValue[];
+    velhoValue?: VelhoAsset[];
+    digiroadValue?: DRValue;
 }
 
 
@@ -95,11 +95,12 @@ interface VKMPayload {
 }
 
 interface ValueAndJoin {
-    values: any;
+    values: DRValue;
     shouldWeJoin: boolean;
 }
     
 export class LinearAssetHandler extends AssetHandler {
+     me = this;
 
     override calculateDiff(srcData: VelhoAsset[], currentData: DbAsset[]) {
         const diff = super.calculateDiff(srcData, currentData);
@@ -314,7 +315,7 @@ export class LinearAssetHandler extends AssetHandler {
                     roadAddress: {ajorata: a1.roadadress?.ajorata, etaisyys: a1.roadadress?.etaisyys,
                         etaisyys_loppu: a1.roadadress?.etaisyys_loppu, osa: a1.roadadress?.osa, tie: 0},
                     velhoValue: [a.asset],
-                    digiroadValue: [this.mapVelhoToDR(a.asset)]
+                    digiroadValue: this.mapVelhoToDR(a.asset)
                 } as LinearAsset
                 if (assetInLinkIndex[a1.linkId] == undefined || assetInLinkIndex[a1.linkId].size == 0) {
                     const newSet = new Set<LinearAsset>();
@@ -324,52 +325,60 @@ export class LinearAssetHandler extends AssetHandler {
         })
         return assetInLinkIndex
     }
-    
+    //TODO create own file when logic start become too large, FillTopology class for example.
     handleLink(assetPerLRM: LinearAsset[]): LinearAsset[] {
-        const initialMapping =assetPerLRM
-            .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue})
         // Define a series of processing steps
-        const steps: ((assets: LinearAsset[]) => LinearAsset[])[] = [
+        const steps: ((assets: LinearAsset[],LinearAssetHandler) => LinearAsset[])[] = [
             this.attemptMerge,
             //this.fillLink, // Example - Additional processing step
         ];
-        const processPipeline = (start: LinearAsset[], steps: ((assets: LinearAsset[]) => LinearAsset[])[]) => 
-            steps.reduce((acc, step) => step(acc), start);
+        const processPipeline = (start: LinearAsset[], steps: ((assets: LinearAsset[],LinearAssetHandler) => LinearAsset[])[]) => 
+            steps.reduce((acc, step) => step(acc,this), start);
         
-        return processPipeline(initialMapping, steps);
+        return processPipeline(assetPerLRM
+            .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue}), steps);
     }
 
-    private attemptMerge(assets: LinearAsset[]): LinearAsset[] {
-        const [newAssets, somethingChanged] = this.mergeStep(assets);
-
+     attemptMerge(assets: LinearAsset[],context:LinearAssetHandler): LinearAsset[] {
+        const [newAssets, somethingChanged] = context.mergeStep(assets);
         // If no changes were made, return the newAssets.
         if (!somethingChanged) return newAssets;
-
         // Recursively try merging again
-        return this.attemptMerge(newAssets);
+        return context.attemptMerge(newAssets
+            .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue}),context);
     }
-    private mergeStep(assets: LinearAsset[]): [LinearAsset[], boolean] {
+    mergeStep(assets: LinearAsset[]): [LinearAsset[], boolean] {
         let somethingChanged = false;
-
-        const newAssets = assets.reduce((accumulator: LinearAsset[], currentItem: LinearAsset, index, array) => {
-            if (index < array.length - 1) {
-                const nextAsset = array[index + 1];
-                if (nextAsset){
-                    let merged = this.merge(nextAsset, currentItem);
-                    if (merged) {
-                        somethingChanged = true;
-                        return accumulator.concat(merged)
-                    } else return accumulator.concat(currentItem)
-                }else return accumulator.concat(currentItem)
-            }
-            return accumulator.concat(currentItem);
-        }, []);
-
-        return [newAssets, somethingChanged];
+        const mergedSet = new Set<string>(); // To keep track of merged externalIds
+        if (assets.length>1) {
+            const newAssets = assets.reduce((accumulator: LinearAsset[], currentItem: LinearAsset, index, array) => {
+                if (index < array.length - 1) {
+                    let currentItem:LinearAsset
+                    let nextAsset:LinearAsset
+                    if (index ==0) {currentItem = array[index]; nextAsset = array[index + 1];
+                    }else {currentItem = array[index + 1]; nextAsset = array[index + 2];} // shift by two item
+                    if (currentItem&&nextAsset){
+                        let merged = this.merge(nextAsset, currentItem);
+                        if (merged) {
+                            merged.externalIds.forEach(id => mergedSet.add(id)); // Add merged IDs to the set
+                            somethingChanged = true;
+                            return accumulator.concat(merged)
+                        } else return accumulator.concat([currentItem,nextAsset])
+                    }else
+                    {
+                        const isAlreadyMerged = currentItem.externalIds.every(id => mergedSet.has(id));
+                        if(!isAlreadyMerged) return accumulator.concat(currentItem)
+                        else return accumulator
+                    }
+                }
+                return accumulator;
+            }, []);
+            return [newAssets, somethingChanged];
+        }else return [assets, somethingChanged]
     }
 
     merge(nextAsset:LinearAsset, currentItem: LinearAsset):LinearAsset | undefined {
-        const isNext = currentItem.LRM.mValueEnd == nextAsset.LRM.mValue && currentItem.LRM.mValue < nextAsset.LRM.mValue
+        const isNext = currentItem.LRM.mValueEnd == nextAsset.LRM.mValue && Math.abs(currentItem.LRM.mValueEnd - nextAsset.LRM.mValue)==0
         const {values,shouldWeJoin}= this.getValueAndShouldWeJoin(nextAsset,currentItem)
         if (isNext && shouldWeJoin) {
             if (typeof values !== 'undefined'){
@@ -378,7 +387,7 @@ export class LinearAssetHandler extends AssetHandler {
                     LRM: {mValue: currentItem.LRM.mValue, mValueEnd: nextAsset.LRM.mValueEnd},
                     roadAddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
                     digiroadValue: values,
-                    velhoValue: currentItem.velhoValue.concat(nextAsset.velhoValue)
+                    velhoValue: currentItem.velhoValue && nextAsset.velhoValue ? currentItem.velhoValue?.concat(nextAsset.velhoValue) : undefined
                 } as LinearAsset
             } else return undefined;
         } else return undefined;
@@ -429,7 +438,7 @@ export class LinearAssetHandler extends AssetHandler {
                     VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert));
                 `;
                     await client.query(insertSql, [
-                        assetWithLinkData.externalIds,
+                        assetWithLinkData.externalIds.sort(),
                         asset_type_id,
                         'Tievelho-import',
                         assetWithLinkData.LRM.municipalityCode,
@@ -466,8 +475,8 @@ export class LinearAssetHandler extends AssetHandler {
         const assets =Object.keys(newLinearAssets).flatMap(key => {
             if (newLinearAssets[key].size > 1) {
                 return this.handleLink([...newLinearAssets[key]]);
-            }
-        })
+            } else return null
+        }).filter(a=> a !=null) as LinearAsset[]
         
         await this.saveNewAssets(asset_type_id, assets)
         //await this.updateAssets(asset_type_id, newAssets)
