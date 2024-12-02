@@ -49,9 +49,10 @@ interface LinkData {
 }
 
 export interface AssetInLinkIndex {
-    [index: string]: Set<LinearAsset>;
+    [linkId: string]: Set<LinearAsset>;
 }
 export interface LinearAsset {
+    id?:number
     externalIds: string[];
     LRM: {
         linkId:string;
@@ -176,6 +177,7 @@ export class LinearAssetHandler extends AssetHandler {
                                 mValueEnd: link.m_arvo_loppu,
                                 municipalityCode: link.kuntakoodi,
                                 roadadress:{
+                                    tie:<number>link.tie,
                                     ajorata: link.ajorata,
                                     osa: link.osa,
                                     etaisyys: link.etaisyys,
@@ -304,7 +306,7 @@ export class LinearAssetHandler extends AssetHandler {
     mapVelhoToDR (asset:VelhoAsset):DRValue{
          return  {value:asset.oid } as DRValue
     }
-    
+  
     velhoAssetToLinearAssets  (asset_type_id: number, newAssets: AssetWithLinkData[]): AssetInLinkIndex {
         const assetInLinkIndex: AssetInLinkIndex = {}
         newAssets.forEach(a => {
@@ -313,7 +315,7 @@ export class LinearAssetHandler extends AssetHandler {
                     externalIds: [a.asset.oid],
                     LRM: {linkId:a1.linkId,municipalityCode:a1.municipalityCode,sideCode:a1.sideCode, mValue: a1.mValue, mValueEnd: a1.mValueEnd},
                     roadAddress: {ajorata: a1.roadadress?.ajorata, etaisyys: a1.roadadress?.etaisyys,
-                        etaisyys_loppu: a1.roadadress?.etaisyys_loppu, osa: a1.roadadress?.osa, tie: 0},
+                        etaisyys_loppu: a1.roadadress?.etaisyys_loppu, osa: a1.roadadress?.osa, tie: a1.roadadress?.tie},
                     velhoValue: [a.asset],
                     digiroadValue: this.mapVelhoToDR(a.asset)
                 } as LinearAsset
@@ -325,8 +327,11 @@ export class LinearAssetHandler extends AssetHandler {
         })
         return assetInLinkIndex
     }
+    private generateNumericId(): number {
+        return Math.floor(Math.random() * 1000000);
+    }
     //TODO create own file when logic start become too large, FillTopology class for example.
-    handleLink(assetPerLRM: LinearAsset[]): LinearAsset[] {
+    handleLink(assetPerLRM: LinearAsset[],roadLink:RoadLink): LinearAsset[] {
         // Define a series of processing steps
         const steps: ((assets: LinearAsset[],LinearAssetHandler) => LinearAsset[])[] = [
             this.attemptMerge,
@@ -347,9 +352,16 @@ export class LinearAssetHandler extends AssetHandler {
         return context.attemptMerge(newAssets
             .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue}),context);
     }
+  
     mergeStep(assets: LinearAsset[]): [LinearAsset[], boolean] {
+        assets.forEach(asset => {
+            if (!asset.id) { // each merge run generate pseudo id to determinate if part is already merged.
+                asset.id = this.generateNumericId();
+            }
+        });
+        
         let somethingChanged = false;
-        const mergedSet = new Set<string>(); // To keep track of merged externalIds
+        const mergedSet = new Set<number>();
         if (assets.length>1) {
             const newAssets = assets.reduce((accumulator: LinearAsset[], currentItem: LinearAsset, index, array) => {
                 if (index < array.length - 1) {
@@ -360,16 +372,12 @@ export class LinearAssetHandler extends AssetHandler {
                     if (currentItem&&nextAsset){
                         let merged = this.merge(nextAsset, currentItem);
                         if (merged) {
-                            merged.externalIds.forEach(id => mergedSet.add(id)); // Add merged IDs to the set
+                            mergedSet.add(<number>currentItem?.id);mergedSet.add(<number>nextAsset?.id)
                             somethingChanged = true;
                             return accumulator.concat(merged)
                         } else return accumulator.concat([currentItem,nextAsset])
-                    }else
-                    {
-                        const isAlreadyMerged = currentItem.externalIds.every(id => mergedSet.has(id));
-                        if(!isAlreadyMerged) return accumulator.concat(currentItem)
-                        else return accumulator
-                    }
+                    }else if (!mergedSet.has(<number>currentItem.id)) return accumulator.concat(currentItem)
+                    else return accumulator
                 }
                 return accumulator;
             }, []);
@@ -472,10 +480,12 @@ export class LinearAssetHandler extends AssetHandler {
         const newLinearAssets= this.velhoAssetToLinearAssets(asset_type_id,newAssets)
         const assetsToUpdateLinear =  this.velhoAssetToLinearAssets(asset_type_id,assetsToUpdate)
 
+        const linkIndex: { [id: string]: RoadLink } = {};
+        links.forEach(a=> linkIndex[a.linkId] = a)
         const assets =Object.keys(newLinearAssets).flatMap(key => {
-            if (newLinearAssets[key].size > 1) {
-                return this.handleLink([...newLinearAssets[key]]);
-            } else return null
+            if (newLinearAssets[key].size > 1) 
+                return this.handleLink([...newLinearAssets[key]],linkIndex[key]);
+             else return null
         }).filter(a=> a !=null) as LinearAsset[]
         
         await this.saveNewAssets(asset_type_id, assets)

@@ -1,8 +1,15 @@
 import {LinearAsset, LinearAssetHandler} from "../src/lambda/linearAssetHandler";
-import {DRValue} from "../src/lambda/type/type";
+import {DRValue, RoadLink} from "../src/lambda/type/type";
 
 const assetHandler = new LinearAssetHandler();
-
+function createRoadLink(options: Partial<RoadLink> = {}): RoadLink {
+    return <RoadLink>{
+        linkId: options.linkId ?? `link-${Math.floor(Math.random() * 1000)}`, // Default random linkId
+        sideCode: options.sideCode ?? 1, // Default side code
+        geometryLength: options.geometryLength ?? 100, // Default geometry length
+        shape: options.shape ?? {coordinates: [[0, 0], [1, 1]]} // Default shape
+    };
+}
 describe('Test logic homogenous part to continuous LRM', () => {
     test('should join assets into one LinearAsset correctly, simple case', () => {
 
@@ -58,7 +65,7 @@ describe('Test logic homogenous part to continuous LRM', () => {
             }
         ];
 
-        const result  = assetHandler.handleLink(expectedJoinedAsset3).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
+        const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'1',geometryLength:90})).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
         expect(result.length).toBe(1)
         expect(result[0].externalIds).toStrictEqual(['1','2','3'])
         expect(result[0].LRM.mValue).toBe(0)
@@ -96,7 +103,7 @@ describe('Test logic homogenous part to continuous LRM', () => {
                 digiroadValue: {value:"finalValue"} as DRValue
             }
         ];
-        const result  = assetHandler.handleLink(expectedJoinedAsset3).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
+        const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link4',geometryLength:100})).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
         expect(result.length).toBe(1)
         expect(result[0].externalIds).toStrictEqual(['9','10','11'])
         expect(result[0].LRM.mValue).toBe(0)
@@ -125,7 +132,7 @@ describe('Test logic homogenous part to continuous LRM', () => {
                 digiroadValue: {value:"finalValue"} as DRValue
             }
         ];
-        const result  = assetHandler.handleLink(expectedJoinedAsset3)
+        const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link3',geometryLength:80}))
             .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
         expect(result.length).toBe(2)
        
@@ -178,7 +185,7 @@ describe('Test logic homogenous part to continuous LRM', () => {
             },
         ];
 
-        const result  = assetHandler.handleLink(expectedJoinedAsset3)
+        const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link2',geometryLength:80}))
             .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
         expect(result.length).toBe(2)
         

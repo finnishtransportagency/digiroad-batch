@@ -24,6 +24,7 @@ export interface LinkInformation {
     sideCode?: number;
     linkTotalLength?:number;
     roadadress?: {
+        tie:number;
         ajorata: number;
         osa: number;
         etaisyys: number;
