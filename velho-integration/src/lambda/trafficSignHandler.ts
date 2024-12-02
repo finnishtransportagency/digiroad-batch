@@ -185,48 +185,57 @@ export class TrafficSignHandler extends PointAssetHandler {
     }
 
     calculateTrafficSignValidityDirection(roadAddressSideCode: RoadAddressGrowthDirection, velhoAssetRoadSide: VelhoRoadSide,
-        velhoAssetValidityDirection: VelhoValidityDirection): SideCode {
+                                          velhoAssetValidityDirection: VelhoValidityDirection): SideCode {
 
-           let validityDirectionRoadAddressGrowth: ValidityDirectionRoadAddress;
+        let validityDirectionRoadAddressGrowth: ValidityDirectionRoadAddress;
 
-           // Determine the validity direction in relation to road address growth
-            switch(velhoAssetRoadSide) {
-               case VelhoRoadSide.Right:
-                   if(velhoAssetValidityDirection == VelhoValidityDirection.TowardsTrafficDirection) {
-                       validityDirectionRoadAddressGrowth = ValidityDirectionRoadAddress.TowardsRoadAddressGrowth;
-                   } else if(velhoAssetValidityDirection == VelhoValidityDirection.AgainstTrafficDirection) {
-                       validityDirectionRoadAddressGrowth =  ValidityDirectionRoadAddress.AgainstRoadAddressGrowth;
-                   }
-               case VelhoRoadSide.Left:
-                   if(velhoAssetValidityDirection == VelhoValidityDirection.TowardsTrafficDirection) {
-                       validityDirectionRoadAddressGrowth =  ValidityDirectionRoadAddress.AgainstRoadAddressGrowth;
-                   } else if(velhoAssetValidityDirection == VelhoValidityDirection.AgainstTrafficDirection) {
-                       validityDirectionRoadAddressGrowth =  ValidityDirectionRoadAddress.TowardsRoadAddressGrowth;
-                   }
-                   //Placeholder default handling
-               default:
-                   validityDirectionRoadAddressGrowth = ValidityDirectionRoadAddress.TowardsRoadAddressGrowth
-           }
+        // Determine the validity direction in relation to road address growth
+        switch (velhoAssetRoadSide) {
+            case VelhoRoadSide.Right: {
+                if (velhoAssetValidityDirection === VelhoValidityDirection.TowardsTrafficDirection) {
+                    validityDirectionRoadAddressGrowth = ValidityDirectionRoadAddress.TowardsRoadAddressGrowth;
+                } else if (velhoAssetValidityDirection === VelhoValidityDirection.AgainstTrafficDirection) {
+                    validityDirectionRoadAddressGrowth = ValidityDirectionRoadAddress.AgainstRoadAddressGrowth;
+                } else {
+                    throw new Error("Invalid Velho validity direction");
+                }
+                break;
+            }
+            case VelhoRoadSide.Left: {
+                if (velhoAssetValidityDirection === VelhoValidityDirection.TowardsTrafficDirection) {
+                    validityDirectionRoadAddressGrowth = ValidityDirectionRoadAddress.AgainstRoadAddressGrowth;
+                } else if (velhoAssetValidityDirection === VelhoValidityDirection.AgainstTrafficDirection) {
+                    validityDirectionRoadAddressGrowth = ValidityDirectionRoadAddress.TowardsRoadAddressGrowth;
+                } else {
+                    throw new Error("Invalid Velho validity direction");
+                }
+                break;
+            }
+            default:
+                throw new Error("Invalid Velho road side");
+        }
 
-           // Use road address side code to determine the validity direction in relation to digitizing direction
-           switch(roadAddressSideCode) {
-               case RoadAddressGrowthDirection.AgainstDigitizing:
-                   if(validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.TowardsRoadAddressGrowth) {
-                       return SideCode.AgainstDigitizing;
-                   } else if (validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.AgainstRoadAddressGrowth) {
-                       return SideCode.TowardsDigitizing;
-                   }
-               case RoadAddressGrowthDirection.TowardsDigitizing:
-                   if(validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.TowardsRoadAddressGrowth) {
-                       return SideCode.TowardsDigitizing;
-                   } else if (validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.AgainstRoadAddressGrowth) {
-                       return SideCode.AgainstDigitizing;
-                   }
-                   //Placeholder default handling
-               default:
-                   return SideCode.TowardsDigitizing;
-           }
-  }
+        // Use road address side code to determine the validity direction in relation to digitizing direction
+        switch (roadAddressSideCode) {
+            case RoadAddressGrowthDirection.AgainstDigitizing: {
+                if (validityDirectionRoadAddressGrowth === ValidityDirectionRoadAddress.TowardsRoadAddressGrowth) {
+                    return SideCode.AgainstDigitizing;
+                } else if (validityDirectionRoadAddressGrowth === ValidityDirectionRoadAddress.AgainstRoadAddressGrowth) {
+                    return SideCode.TowardsDigitizing;
+                }
+                break;
+            }
+            case RoadAddressGrowthDirection.TowardsDigitizing: {
+                if (validityDirectionRoadAddressGrowth === ValidityDirectionRoadAddress.TowardsRoadAddressGrowth) {
+                    return SideCode.TowardsDigitizing;
+                } else if (validityDirectionRoadAddressGrowth === ValidityDirectionRoadAddress.AgainstRoadAddressGrowth) {
+                    return SideCode.AgainstDigitizing;
+                }
+                break;
+            }
+        }
+
+    }
 
 
     velhoAssetToDigiroadAsset(assetWithLinkData: AssetWithLinkData, roadLink: RoadLink, roadAddressGrowthDirection: RoadAddressGrowthDirection) {
