@@ -36,6 +36,15 @@ export interface RoadLink {
     shape:LineString;
 }
 
+export interface RoadLinkAddressGrowth {
+    linkId: string;
+    roadAddressGrowth: RoadAddressGrowthDirection
+}
+
+export enum RoadAddressGrowthDirection {
+    TowardsDigitizing = 2,
+    AgainstDigitizing = 3
+}
 // SideCode describes the location or validity direction in relation to RoadLink digitzing direction
 export enum SideCode {
     BothDirections = 1,

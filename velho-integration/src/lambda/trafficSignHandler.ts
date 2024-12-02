@@ -1,4 +1,4 @@
-import { PointAssetHandler } from './pointAssetHandler';
+import {PointAssetHandler} from './pointAssetHandler';
 import {
     getCoatingTypeDigiroadValue,
     getConditionDigiroadValue,
@@ -11,8 +11,26 @@ import {
     getUrgencyOfRepairDigiroadValue,
 } from "./trafficSignValueMappings";
 import {AssetWithLinkData, VelhoPointAsset, VelhoRoadSide, VelhoValidityDirection} from "./type/velhoAsset";
-import {RoadLink, SideCode, ValidityDirectionRoadAddress} from "./type/type";
+import {
+    RoadAddressGrowthDirection,
+    RoadLink,
+    RoadLinkAddressGrowth,
+    SideCode,
+    ValidityDirectionRoadAddress
+} from "./type/type";
 import {calculateRoadLinkBearing, getAssetSideCodeByBearing} from "./utils/geometryUtils";
+import {getVkmApiKey} from "./utils/AWSUtils";
+
+interface VKMResponseForRoadAddressGrowthPoint {
+    features: {
+        properties: {
+            tunniste: string,
+            link_id: string,
+            m_arvo: number,
+            etaisyys: number
+        };
+    }[];
+}
 
 export interface VelhoTrafficSignAsset extends VelhoPointAsset {
     ominaisuudet: {
@@ -57,6 +75,100 @@ export interface VelhoTrafficSignAsset extends VelhoPointAsset {
 
 export class TrafficSignHandler extends PointAssetHandler {
 
+    getRoadLinkRoadAddressGrowthDirections = async (roadLinks: RoadLink[], vkmApiKey: string): Promise <RoadLinkAddressGrowth[]>  => {
+        const chunkSize = 500; // 2x transformations for roadlink, VKM maximum transformations for 1 POST request is 1000
+        const chunkData = (array: RoadLink[], size: number): RoadLink[][] => {
+            const chunks: RoadLink[][] = [];
+            for (let i = 0; i < array.length; i += size) {
+                chunks.push(array.slice(i, i + size));
+            }
+            return chunks;
+        };
+
+        const fetchStartAndEndVKM = async (roadLinksToTransform: RoadLink[]) => {
+
+            const parametersContent = roadLinksToTransform.flatMap(roadLink => {
+
+                const mValueStartParams: {link_id: string, m_arvo: number, tunniste: string, palautusarvot: string} = {
+                    link_id: roadLink.linkId,
+                    m_arvo: 0.0,
+                    tunniste: "DigitizingStart",
+                    palautusarvot: '2,6'
+                };
+
+                const mValueEndParams: {link_id: string, m_arvo: number, tunniste: string, palautusarvot: string} = {
+                    link_id: roadLink.linkId,
+                    m_arvo: roadLink.geometryLength,
+                    tunniste: "DigitizingEnd",
+                    palautusarvot: '2,6'
+                };
+
+                return [mValueStartParams, mValueEndParams];
+            });
+            const encodedBody = encodeURIComponent(JSON.stringify(parametersContent));
+            const response = await fetch('https://api.vaylapilvi.fi/viitekehysmuunnin/muunna', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-API-KEY': `${vkmApiKey}`
+                },
+                body: `json=${encodedBody}`,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error: ${response.statusText}`);
+            }
+
+            const data: VKMResponseForRoadAddressGrowthPoint = await response.json();
+
+            return data.features.map(f => f.properties);
+        };
+
+        const chunkedData = chunkData(roadLinks, chunkSize);
+        const promises = chunkedData.map(chunk => fetchStartAndEndVKM(chunk));
+
+        try {
+            const results = await Promise.all(promises);
+            const flatResults = results.flat();
+
+            return roadLinks.flatMap(roadLink => {
+                const digitizingStartAddress = flatResults.find(r => r.link_id === roadLink.linkId && r.tunniste === "DigitizingStart").etaisyys;
+                const digitizingEndAddress = flatResults.find(r => r.link_id === roadLink.linkId && r.tunniste === "DigitizingEnd").etaisyys;
+
+                let roadAddressGrowthDirection: RoadAddressGrowthDirection;
+                if (digitizingStartAddress < digitizingEndAddress) roadAddressGrowthDirection = RoadAddressGrowthDirection.TowardsDigitizing;
+                else roadAddressGrowthDirection = RoadAddressGrowthDirection.AgainstDigitizing;
+
+                return {linkId: roadLink.linkId, roadAddressGrowth: roadAddressGrowthDirection}
+            });
+        } catch (err) {
+            console.error(err);
+            throw new Error("Error during calculating road link road address growth using VKM")
+        }
+    }
+
+
+    async saveChanges(asset_type_id: number, newAssets: AssetWithLinkData[], assetsToUpdate: AssetWithLinkData[],links:RoadLink[]): Promise<void> {
+        const roadLinkRoadAddressGrowths = await this.getRoadLinkRoadAddressGrowthDirections(links, await getVkmApiKey());
+        const newTrafficSignsWithDigiroadValues = newAssets.map(asset => {
+            const roadLink = links.find(rl => rl.linkId === asset.linkData[0].linkId);
+
+            if (roadLink) {
+                const roadAddressGrowthDirection = roadLinkRoadAddressGrowths.find(roadAddressGrowth => roadAddressGrowth.linkId === roadLink.linkId)?.roadAddressGrowth
+                if (roadAddressGrowthDirection) {
+                    this.velhoAssetToDigiroadAsset(asset, roadLink, roadAddressGrowthDirection);
+                    //TODO Add insert and update
+                } else {
+                    console.log(`No road link road address growth found for asset with linkId: ${asset.linkData[0].linkId}`);
+                }
+
+            } else {
+                console.log(`No road link found for asset with linkId: ${asset.linkData[0].linkId}`);
+            }
+        });
+
+    }
+
     override filterUnnecessary(srcData: VelhoTrafficSignAsset[]): VelhoTrafficSignAsset[] {
         return srcData.filter(src => {
             const tiekohteenTilaFilter = !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03'
@@ -72,7 +184,7 @@ export class TrafficSignHandler extends PointAssetHandler {
         })
     }
 
-    calculateTrafficSignValidityDirection(roadAddressSideCode: SideCode, velhoAssetRoadSide: VelhoRoadSide,
+    calculateTrafficSignValidityDirection(roadAddressSideCode: RoadAddressGrowthDirection, velhoAssetRoadSide: VelhoRoadSide,
         velhoAssetValidityDirection: VelhoValidityDirection): SideCode {
 
            let validityDirectionRoadAddressGrowth: ValidityDirectionRoadAddress;
@@ -98,13 +210,13 @@ export class TrafficSignHandler extends PointAssetHandler {
 
            // Use road address side code to determine the validity direction in relation to digitizing direction
            switch(roadAddressSideCode) {
-               case SideCode.AgainstDigitizing:
+               case RoadAddressGrowthDirection.AgainstDigitizing:
                    if(validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.TowardsRoadAddressGrowth) {
                        return SideCode.AgainstDigitizing;
                    } else if (validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.AgainstRoadAddressGrowth) {
                        return SideCode.TowardsDigitizing;
                    }
-               case SideCode.TowardsDigitizing:
+               case RoadAddressGrowthDirection.TowardsDigitizing:
                    if(validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.TowardsRoadAddressGrowth) {
                        return SideCode.TowardsDigitizing;
                    } else if (validityDirectionRoadAddressGrowth == ValidityDirectionRoadAddress.AgainstRoadAddressGrowth) {
@@ -117,7 +229,7 @@ export class TrafficSignHandler extends PointAssetHandler {
   }
 
 
-    velhoAssetToDigiroadAsset(assetWithLinkData: AssetWithLinkData, roadLink: RoadLink, roadAddressSideCode: SideCode) {
+    velhoAssetToDigiroadAsset(assetWithLinkData: AssetWithLinkData, roadLink: RoadLink, roadAddressGrowthDirection: RoadAddressGrowthDirection) {
         const velhoTrafficSignAsset = assetWithLinkData.asset as VelhoTrafficSignAsset;
         const externalId = velhoTrafficSignAsset.oid;
 
@@ -138,7 +250,7 @@ export class TrafficSignHandler extends PointAssetHandler {
             else {
                 throw new Error(`Asset OID: ${externalId} has invalid Velho puoli or vaikutussuunta value`)
             }
-            sideCodeDigiroadValue = this.calculateTrafficSignValidityDirection(roadAddressSideCode, velhoRoadSideValue,velhoValidityDirectionValue)
+            sideCodeDigiroadValue = this.calculateTrafficSignValidityDirection(roadAddressGrowthDirection, velhoRoadSideValue,velhoValidityDirectionValue)
         }
 
         const terrainCoordinates = velhoTrafficSignAsset.mitattugeometria?.geometria
