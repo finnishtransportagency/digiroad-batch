@@ -322,7 +322,7 @@ export class LinearAssetHandler extends AssetHandler {
                 if (assetInLinkIndex[a1.linkId] == undefined || assetInLinkIndex[a1.linkId].size == 0) {
                     const newSet = new Set<LinearAsset>();
                     assetInLinkIndex[a1.linkId] = newSet.add(asset);
-                } else assetInLinkIndex[a1.linkId].add(asset) // lopullisesta huomioi duplikaatit
+                } else assetInLinkIndex[a1.linkId].add(asset)
             })
         })
         return assetInLinkIndex
@@ -332,12 +332,11 @@ export class LinearAssetHandler extends AssetHandler {
     }
     //TODO create own file when logic start become too large, FillTopology class for example.
     handleLink(assetPerLRM: LinearAsset[],roadLink:RoadLink): LinearAsset[] {
-        // Define a series of processing steps
-        const steps: ((assets: LinearAsset[],LinearAssetHandler) => LinearAsset[])[] = [
+        const steps: ((assets: LinearAsset[],context:LinearAssetHandler) => LinearAsset[])[] = [
             this.attemptMerge,
             //this.fillLink, // Example - Additional processing step
         ];
-        const processPipeline = (start: LinearAsset[], steps: ((assets: LinearAsset[],LinearAssetHandler) => LinearAsset[])[]) => 
+        const processPipeline = (start: LinearAsset[], steps: ((assets: LinearAsset[],context:LinearAssetHandler) => LinearAsset[])[]) => 
             steps.reduce((acc, step) => step(acc,this), start);
         
         return processPipeline(assetPerLRM
@@ -382,7 +381,7 @@ export class LinearAssetHandler extends AssetHandler {
                 return accumulator;
             }, []);
             return [newAssets, somethingChanged];
-        }else return [assets, somethingChanged]
+        } else return [assets, somethingChanged]
     }
 
     merge(nextAsset:LinearAsset, currentItem: LinearAsset):LinearAsset | undefined {
@@ -401,11 +400,6 @@ export class LinearAssetHandler extends AssetHandler {
         } else return undefined;
     }
     
-     fillLink() {
-        return (list, currentItem: LinearAsset, currentIndex: number, array: LinearAsset[]): LinearAsset[] => {
-            return list;
-        };
-    }
     /*
         Generic method determinate should we join two asset. Override with your own implementation as needed.
      */
@@ -414,8 +408,6 @@ export class LinearAssetHandler extends AssetHandler {
             return {values:currentItem.digiroadValue,shouldWeJoin: true} as ValueAndJoin
         } else return {values:currentItem.digiroadValue,shouldWeJoin: false } as ValueAndJoin
     }
-
-
     async saveNewAssets(asset_type_id: number, newAssets: LinearAsset[]) {
 
         if (newAssets.length === 0) {
