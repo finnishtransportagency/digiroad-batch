@@ -95,7 +95,7 @@ interface VKMPayload {
         ajr?:string;
 }
 
-interface ValueAndJoin {
+export interface ValueAndJoin {
     values: DRValue;
     shouldWeJoin: boolean;
 }
@@ -462,7 +462,7 @@ export class LinearAssetHandler extends AssetHandler {
         }
     };
 
-    updateAssets(asset_type_id: number, assetsToUpdate: LinearAsset[][]): Promise<void> {
+    updateAssets(asset_type_id: number, assetsToUpdate: LinearAsset[]): Promise<void> {
         //Placeholder logic
         return new Promise<void>((resolve, reject) => {resolve();}); 
     }

@@ -1,7 +1,8 @@
 import { getClient } from "./utils/AWSUtils";
-import {LinearAssetHandler} from "./linearAssetHandler";
+import {LinearAsset, LinearAssetHandler, ValueAndJoin} from "./linearAssetHandler";
 import {AssetWithLinkData, VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
 import {DRValue} from "./type/type";
+import console from "console";
 
 export enum PavementClass {
     Asphalt = 1, //asfaltti
@@ -20,8 +21,11 @@ export interface VelhoPavementAsset extends VelhoLinearAsset {
         'paallysteen-tyyppi'?: string;
         runkomateriaali?: string;
         'velhoSource'?:string;
-        drProperty?:PavementClass;
     }
+}
+
+export interface PavementValue {
+    pavement:PavementClass
 }
 
 export class PavementHandler extends LinearAssetHandler {
@@ -117,7 +121,7 @@ export class PavementHandler extends LinearAssetHandler {
         return srcData.filter(s => Object.keys(this.pavementByOid).includes(s.oid))
     }
 
-    override mapVelhoToDR (asset:VelhoAsset):DRValue{
+    override mapVelhoToDR(asset: VelhoAsset): DRValue {
         const s = asset as VelhoPavementAsset
         const asphaltSources = this.asphaltSources
         const cobblestoneSources = this.cobblestoneSources
@@ -125,51 +129,56 @@ export class PavementHandler extends LinearAssetHandler {
         const otherSources = this.otherSources
         const unknownTypeSources = this.unboundSources
         const velhoSource = this.sourceByOid[s.oid]
-        
+
         switch (velhoSource) {
             case 'ladottavat-pintarakenteet':
                 if (s.ominaisuudet?.materiaali && cobblestoneSources.includes(s.ominaisuudet.materiaali)) {
-                    return  { value:PavementClass.Cobblestone.toString()}as DRValue
-                } else  throw new Error('Cannot map value')
+                    return {pavement: PavementClass.Cobblestone} as PavementValue as DRValue
+                } else throw new Error('Cannot map value')
             case 'muut-pintarakenteet':
                 if (s.ominaisuudet?.materiaali) {
                     if (asphaltSources.includes(s.ominaisuudet.materiaali)) {
-                        return  { value:PavementClass.Asphalt.toString()}as DRValue
+                        return {pavement: PavementClass.Asphalt} as PavementValue as DRValue
                     } else if (unboundSources.includes(s.ominaisuudet.materiaali)) {
-                        return  { value:PavementClass.UnboundWearLayer.toString()}as DRValue
+                        return {pavement: PavementClass.UnboundWearLayer} as PavementValue as DRValue
                     } else if (otherSources.includes(s.ominaisuudet.materiaali)) {
-                        return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                        return {pavement: PavementClass.OtherPavementClasses} as PavementValue as DRValue
                     } else if (unknownTypeSources.includes(s.ominaisuudet.materiaali)) {
-                        return  { value:PavementClass.Unknown.toString()}as DRValue
-                    } else  throw new Error('Cannot map value')
-                }
-                else  throw new Error('Cannot map value')
+                        return {pavement: PavementClass.Unknown} as PavementValue as DRValue
+                    } else throw new Error('Cannot map value')
+                } else throw new Error('Cannot map value')
             case 'pintaukset':
                 if (s.ominaisuudet?.['pintauksen-tyyppi'] && otherSources.includes(s.ominaisuudet['pintauksen-tyyppi'])) {
-                    return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                    return {pavement: PavementClass.OtherPavementClasses} as PavementValue as DRValue
                 } else if (s.ominaisuudet?.uusiomateriaali && otherSources.includes(s.ominaisuudet?.uusiomateriaali)) {
-                    return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
-                }
-                else  throw new Error('Cannot map value')
+                    return {pavement: PavementClass.OtherPavementClasses} as PavementValue as DRValue
+                } else throw new Error('Cannot map value')
             case 'sidotut-paallysrakenteet':
                 if (s.ominaisuudet?.tyyppi && s.ominaisuudet['paallysteen-tyyppi'] && s.ominaisuudet.tyyppi === 'sidotun-paallysrakenteen-tyyppi/spt01') {
                     if (asphaltSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
-                        return  { value:PavementClass.Asphalt.toString()}as DRValue
+                        return {pavement: PavementClass.Asphalt} as PavementValue as DRValue
                     } else if (otherSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
-                        return  { value:PavementClass.OtherPavementClasses.toString()}as DRValue
+                        return {pavement: PavementClass.OtherPavementClasses} as PavementValue as DRValue
                     } else if (unknownTypeSources.includes(s.ominaisuudet['paallysteen-tyyppi'])) {
-                        return  { value:PavementClass.Unknown.toString()}as DRValue
-                    } else  throw new Error('Cannot map value')
-                } else  throw new Error('Cannot map value')
+                        return {pavement: PavementClass.Unknown} as PavementValue as DRValue
+                    } else throw new Error('Cannot map value')
+                } else throw new Error('Cannot map value')
             case 'sitomattomat-pintarakenteet':
                 if (s.ominaisuudet?.runkomateriaali && unboundSources.includes(s.ominaisuudet.runkomateriaali)) {
-                    return  { value:PavementClass.UnboundWearLayer.toString()}as DRValue
-                } else  throw new Error('Cannot map value')
+                    return {pavement: PavementClass.UnboundWearLayer} as PavementValue as DRValue
+                } else throw new Error('Cannot map value')
             default:
                 throw new Error('Cannot map value')
-    }
+        }
     }
     
+   override getValueAndShouldWeJoin (compare:LinearAsset, currentItem: LinearAsset) {
+        const pavementA = compare.digiroadValue as PavementValue
+        const pavementB = currentItem.digiroadValue as PavementValue
+        if (JSON.stringify(pavementA.pavement) == JSON.stringify(pavementB.pavement)) {
+            return {values:currentItem.digiroadValue,shouldWeJoin: true} as ValueAndJoin
+        } else return {values:currentItem.digiroadValue,shouldWeJoin: false } as ValueAndJoin
+    }
 
     /**
      * This method performs first the parent class filter. Then it filters the velho assets on main lanes. 
@@ -193,10 +202,8 @@ export class PavementHandler extends LinearAssetHandler {
         })
         return this.filterByPavementTypeAndAddDRProperty(necessaryAssets)
     };
-
-    /*
-    uudelleen tee tämä koko osio
-    async saveNewAssets(asset_type_id: number, newAssets: AssetWithLinkData[]) {
+    
+    async saveNewAssets(asset_type_id: number, newAssets: LinearAsset[]) {
 
         if (newAssets.length === 0) {
             console.log("No assets to save.");
@@ -234,16 +241,15 @@ export class PavementHandler extends LinearAssetHandler {
             enumeratedValueResult.rows.forEach(row => {
                 enumeratedValueMap.set(Number(row.value), Number(row.id));
             });
-            // TODO kirjoita tämä uusiksi
-            const insertPromises = newAssets.map((assetWithLinkData) => {
-                return Promise.all((assetWithLinkData.linkData || []).map(async (linkData) => {
-                    const pavementType = this.pavementByOid[assetWithLinkData.asset.oid];
-                    const enumeratedValueId = enumeratedValueMap.get(pavementType);
-                    if (!enumeratedValueId) {
-                        throw new Error(`No enumerated value ID found for value: ${pavementType}`);
-                    }
+            
+            const insertPromises = newAssets.map(async (assetWithLinkData) => {
+                const pavementType =(assetWithLinkData.digiroadValue as PavementValue).pavement
+                const enumeratedValueId = enumeratedValueMap.get(pavementType);
+                if (!enumeratedValueId) {
+                    throw new Error(`No enumerated value ID found for value: ${pavementType}`);
+                }
 
-                    const insertSql = `
+                const insertSql = `
                         WITH asset_insert AS (
                             INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, municipality_code)
                             VALUES (nextval('primary_key_seq'), $1, $2, $3, current_timestamp, $4)
@@ -263,22 +269,21 @@ export class PavementHandler extends LinearAssetHandler {
                         VALUES ((SELECT asset_id FROM asset_link_insert), $11, $12, current_timestamp, $3);
                     `;
 
-                    await client.query(insertSql, [
-                        assetWithLinkData.asset.oid,
-                        asset_type_id,
-                        'Tievelho-import',
-                        linkData.municipalityCode,
-                        linkData.mValue,
-                        linkData.mValueEnd,
-                        linkData.linkId,
-                        linkData.sideCode,
-                        timeStamp,
-                        1, //normal link interface
-                        enumeratedValueId,
-                        propertyId
-                    ]);
-                }));
-            });
+                await client.query(insertSql, [
+                    assetWithLinkData.externalIds.sort(),
+                    asset_type_id,
+                    'Tievelho-import',
+                    assetWithLinkData.LRM.municipalityCode,
+                    assetWithLinkData.LRM.mValue,
+                    assetWithLinkData.LRM.mValueEnd,
+                    assetWithLinkData.LRM.linkId,
+                    assetWithLinkData.LRM.sideCode,
+                    timeStamp,
+                    1, //normal link interface
+                    enumeratedValueId,
+                    propertyId
+                ]);
+            })
 
             await Promise.all(insertPromises);
             await client.query('COMMIT');
@@ -290,10 +295,10 @@ export class PavementHandler extends LinearAssetHandler {
             await client.end();
         }
     };
+// this code will compile but might not actually work, need testing.
+    async updateAssets(asset_type_id: number, assetsToUpdate: LinearAsset[]) {
 
-    async updateAssets(asset_type_id: number, assetsToUpdate: AssetWithLinkData[]) {
-
-        const assetsWithVersioning = assetsToUpdate.filter(a => this.sourcesWithVersioning.includes(this.sourceByOid[a.asset.oid]));
+        const assetsWithVersioning = assetsToUpdate.filter(a => this.sourcesWithVersioning.includes(this.sourceByOid[a.externalIds]));
 
         if (assetsWithVersioning.length !== assetsToUpdate.length) {
             console.log('There were non-versioned assets in assets to update:', assetsToUpdate.filter(atu => !assetsWithVersioning.includes(atu)).map(a => a.asset.oid));
@@ -335,7 +340,7 @@ export class PavementHandler extends LinearAssetHandler {
                 enumeratedValueMap.set(Number(row.value), Number(row.id));
             });
 
-            const oidsToExpire = assetsWithVersioning.map(asset => asset.asset.oid);
+            const oidsToExpire = assetsWithVersioning.map(asset => asset.externalIds);
 
             const expiredAssetsSql = `
                 WITH expired_assets AS (
@@ -353,20 +358,20 @@ export class PavementHandler extends LinearAssetHandler {
                 originalCreationData.set(row.external_id, { created_by: row.created_by, created_date: row.created_date });
             });
 
-            const insertPromises = assetsWithVersioning.map(assetWithLinkData => {
-                return Promise.all((assetWithLinkData.linkData || []).map(async (linkData) => {
-                    const pavementType = this.pavementByOid[assetWithLinkData.asset.oid];
-                    const enumeratedValueId = enumeratedValueMap.get(pavementType);
-                    if (!enumeratedValueId) {
-                        throw new Error(`No enumerated value id found for value: ${pavementType}`);
-                    }
 
-                    const { created_by, created_date } = originalCreationData.get(assetWithLinkData.asset.oid) || {
-                        created_by: 'Tievelho-import',
-                        created_date: new Date()
-                    };
+            const insertPromises = assetsWithVersioning.map(async (assetWithLinkData) => {
+                const pavementType =(assetWithLinkData.digiroadValue as PavementValue).pavement
+                const enumeratedValueId = enumeratedValueMap.get(pavementType);
+                if (!enumeratedValueId) {
+                    throw new Error(`No enumerated value id found for value: ${pavementType}`);
+                }
 
-                    const insertSql = `
+                const { created_by, created_date } = originalCreationData.get(assetWithLinkData.externalIds[0]) || {
+                    created_by: 'Tievelho-import',
+                    created_date: new Date()
+                };
+
+                const insertSql = `
                         WITH asset_insert AS (
                             INSERT INTO asset (id, external_id, asset_type_id, created_by, created_date, modified_by, modified_date, municipality_code)
                             VALUES (nextval('primary_key_seq'), $1, $2, $3, $4, 'Tievelho-update', current_timestamp, $5)
@@ -386,22 +391,21 @@ export class PavementHandler extends LinearAssetHandler {
                         VALUES ((SELECT asset_id FROM asset_link_insert), $11, $12, current_timestamp);
                     `;
 
-                    await client.query(insertSql, [
-                        assetWithLinkData.asset.oid,
-                        asset_type_id,
-                        created_by,
-                        created_date,
-                        linkData.municipalityCode,
-                        linkData.mValue,
-                        linkData.mValueEnd,
-                        linkData.linkId,
-                        linkData.sideCode,
-                        timeStamp,
-                        enumeratedValueId,
-                        propertyId
-                    ]);
-                }));
-            });
+                await client.query(insertSql, [
+                    assetWithLinkData.externalIds.sort(),
+                    asset_type_id,
+                    created_by,
+                    created_date,
+                    assetWithLinkData.LRM.municipalityCode,
+                    assetWithLinkData.LRM.mValue,
+                    assetWithLinkData.LRM.mValueEnd,
+                    assetWithLinkData.LRM.linkId,
+                    assetWithLinkData.LRM.sideCode,
+                    timeStamp,
+                    enumeratedValueId,
+                    propertyId
+                ]);
+            })
 
             await Promise.all(insertPromises);
             await client.query('COMMIT');
@@ -412,6 +416,6 @@ export class PavementHandler extends LinearAssetHandler {
         } finally {
             await client.end();
         }
-    };*/
+    };
 
 }
