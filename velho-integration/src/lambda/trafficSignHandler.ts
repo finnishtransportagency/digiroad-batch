@@ -173,10 +173,11 @@ export class TrafficSignHandler extends PointAssetHandler {
         return srcData.filter(src => {
             const tiekohteenTilaFilter = !src['tiekohteen-tila'] || src['tiekohteen-tila'] === 'tiekohteen-tila/tt03'
             const sijaintiPoikkeusFilter = src.ominaisuudet.sijaintipoikkeus != 'sijaintipoikkeus/sp01' && src.ominaisuudet.sijaintipoikkeus != 'sijaintipoikkeus/sp02'
-            const validityDirectionFilter = src.ominaisuudet['toiminnalliset-ominaisuudet'].vaikutussuunta != "liikennemerkki-vaikutussuunta/liivasu03"
+            const validityDirectionFilter = src.ominaisuudet['toiminnalliset-ominaisuudet'].vaikutussuunta === VelhoValidityDirection.TowardsTrafficDirection ||
+                src.ominaisuudet['toiminnalliset-ominaisuudet'].vaikutussuunta === VelhoValidityDirection.AgainstTrafficDirection;
             const sideFilter = (
-                src.sijaintitarkenne?.puoli === "puoli/p01" || 
-                src.sijaintitarkenne?.puoli === "puoli/p02" || 
+                src.sijaintitarkenne?.puoli === VelhoRoadSide.Right ||
+                src.sijaintitarkenne?.puoli === VelhoRoadSide.Left ||
                 (src.sijaintitarkenne?.puoli === "puoli/p03" && src.ominaisuudet?.['rakenteelliset-ominaisuudet']?.suunta != null)
               );
 
