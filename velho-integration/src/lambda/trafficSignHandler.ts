@@ -178,7 +178,7 @@ export class TrafficSignHandler extends PointAssetHandler {
             const sideFilter = (
                 src.sijaintitarkenne?.puoli === VelhoRoadSide.Right ||
                 src.sijaintitarkenne?.puoli === VelhoRoadSide.Left ||
-                (src.sijaintitarkenne?.puoli === "puoli/p03" && src.ominaisuudet?.['rakenteelliset-ominaisuudet']?.suunta != null)
+                (src.sijaintitarkenne?.puoli === VelhoRoadSide.Between && src.ominaisuudet?.['rakenteelliset-ominaisuudet']?.suunta != null)
               );
 
             return tiekohteenTilaFilter && sijaintiPoikkeusFilter && validityDirectionFilter && sideFilter;
