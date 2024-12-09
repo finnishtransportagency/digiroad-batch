@@ -1,4 +1,4 @@
-import {LinearAsset, LinearAssetHandler} from "../src/lambda/linearAssetHandler";
+import {ILinearAsset, LinearAsset, LinearAssetHandler} from "../src/lambda/linearAssetHandler";
 import {DRValue, RoadLink} from "../src/lambda/type/type";
 
 const assetHandler = new LinearAssetHandler();
@@ -14,16 +14,16 @@ describe('Test logic homogenous part to continuous LRM', () => {
     test('should join assets into one LinearAsset correctly, simple case', () => {
 
         const expectedJoinedAsset3: LinearAsset[] = [
-            {
+            new LinearAsset({
                 externalIds: ['7'], 
                 LRM: { linkId:"1",mValue: 0, mValueEnd: 40 }, 
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            }as ILinearAsset),
+                new LinearAsset({
                 externalIds: ['8'],
                 LRM: {linkId:"1", mValue: 40, mValueEnd: 80 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            }
+            }as ILinearAsset)
         ];
         const result: LinearAsset  = assetHandler.merge(expectedJoinedAsset3[1],expectedJoinedAsset3[0] ) as LinearAsset;
 
@@ -39,30 +39,30 @@ describe('Test logic homogenous part to continuous LRM', () => {
     test('should join assets into one LinearAsset correctly, three part', () => {
 
         const expectedJoinedAsset3: LinearAsset[] = [
-            {
+            new LinearAsset( {
                 externalIds: ['1'],
                 LRM: {
                     linkId: 'link1',                municipalityCode: 123,
                     mValue: 0,                mValueEnd: 30
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            } as ILinearAsset ),
+            new LinearAsset({
                 externalIds: ['2'],
                 LRM: {
                     linkId: 'link1',                municipalityCode: 123,
                     mValue: 30,                mValueEnd: 60
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            }  as ILinearAsset), 
+                new LinearAsset({
                 externalIds: ['3'],
                 LRM: {
                     linkId: 'link1',                municipalityCode: 123,
                     mValue: 60,                mValueEnd: 90
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            }
+            } as ILinearAsset)
         ];
 
         const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'1',geometryLength:90})).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
@@ -78,30 +78,30 @@ describe('Test logic homogenous part to continuous LRM', () => {
     test('should join assets into one LinearAsset correctly, four part', () => {
 
         const expectedJoinedAsset3: LinearAsset[] = [
-            {
+            new LinearAsset( {
                 externalIds: ['9'],
                 LRM: {
                     linkId: 'link4',            municipalityCode: 126,
                     mValue: 0,            mValueEnd: 30
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            }as ILinearAsset),
+                new LinearAsset(  {
                 externalIds: ['10'],
                 LRM: {
                     linkId: 'link4',            municipalityCode: 126,
                     mValue: 30,                mValueEnd: 70
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            }as ILinearAsset),
+                    new LinearAsset(  {
                 externalIds: ['11'],
                 LRM: {
                     linkId: 'link4',            municipalityCode: 126,
                     mValue: 70,            mValueEnd: 100
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            }
+            }as ILinearAsset)
         ];
         const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link4',geometryLength:100})).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
         expect(result.length).toBe(1)
@@ -115,22 +115,22 @@ describe('Test logic homogenous part to continuous LRM', () => {
     test('Small gap between part', () => {
 
         const expectedJoinedAsset3: LinearAsset[] = [
-            {
+            new LinearAsset(     {
                 externalIds: ['7'],
                 LRM: {
                     linkId: 'link3',            municipalityCode: 125,
                     mValue: 0,            mValueEnd: 40
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            }as ILinearAsset),
+            new LinearAsset(    {
                 externalIds: ['8'],
                 LRM: {
                     linkId: 'link3',            municipalityCode: 125,
                     mValue: 50,            mValueEnd: 80
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            }
+            }as ILinearAsset)
         ];
         const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link3',geometryLength:80}))
             .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
@@ -151,40 +151,39 @@ describe('Test logic homogenous part to continuous LRM', () => {
     test('Join similar part, assets are out of order and two different values', () => {
 
         const expectedJoinedAsset3: LinearAsset[] = [
-            {
+            new LinearAsset(   {
                 externalIds: ['5'],
                 LRM: {
                     linkId: 'link2',            municipalityCode: 124,
                     mValue: 25,            mValueEnd: 55
                 },
                 digiroadValue: {value:"finalValue2"} as DRValue
-            },
-            {
+            } as ILinearAsset),
+                new LinearAsset(   {
                 externalIds: ['6'],
                 LRM: {
                     linkId: 'link2',            municipalityCode: 124,
                     mValue: 55,            mValueEnd: 80
                 },
                 digiroadValue: {value:"finalValue2"} as DRValue
-            },
-            {
+            } as ILinearAsset),
+                    new LinearAsset(   {
                 externalIds: ['3'],
                 LRM: {
                     linkId: 'link2',            municipalityCode: 124,
                     mValue: 0,            mValueEnd: 20
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
-            {
+            } as ILinearAsset),
+            new LinearAsset(      {
                 externalIds: ['4'],
                 LRM: {
                     linkId: 'link2',            municipalityCode: 124,
                     mValue: 20,            mValueEnd: 25
                 },
                 digiroadValue: {value:"finalValue"} as DRValue
-            },
+            } as ILinearAsset),
         ];
-
         const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link2',geometryLength:80}))
             .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
         expect(result.length).toBe(2)

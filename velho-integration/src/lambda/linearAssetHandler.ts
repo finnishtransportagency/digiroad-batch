@@ -26,10 +26,6 @@ export interface ValidVKMFeature {
         etaisyys: number;
     };
 }
-export interface AssetInLink {
-    asset: VelhoAsset;
-    linkData: LinkInformation;
-}
 
 interface LinkData {
     tie: number | undefined;
@@ -51,7 +47,7 @@ interface LinkData {
 export interface AssetInLinkIndex {
     [linkId: string]: Set<LinearAsset>;
 }
-export interface LinearAsset {
+export interface ILinearAsset {
     id?:number
     externalIds: string[];
     LRM: {
@@ -70,6 +66,54 @@ export interface LinearAsset {
     };
     velhoValue?: VelhoAsset[];
     digiroadValue?: DRValue;
+}
+
+export class LinearAsset implements ILinearAsset {
+
+    id: number;
+    externalIds: string[];
+    LRM: { linkId: string; municipalityCode?: number; sideCode?: number; mValue: number; mValueEnd: number; };
+    roadAddress?: { tie: number; ajorata: number; osa: number; etaisyys: number; etaisyys_loppu: number; };
+    velhoValue?: VelhoAsset[];
+    digiroadValue?: DRValue;
+
+    constructor(options: Partial<ILinearAsset>) {
+        if (!options.externalIds) {
+            throw new Error("ExternalIds is not provided");
+        }
+        if (!options.LRM) {
+            throw new Error("LRM is not provided");
+        }
+        this.id = options.id ?? this.generateNumericId();
+        this.externalIds = options.externalIds;
+        this.LRM = options.LRM;
+        this.roadAddress = options.roadAddress;
+        this.velhoValue = options.velhoValue;
+        this.digiroadValue = options.digiroadValue;
+    }
+    private generateNumericId(): number {
+        return Math.floor(Math.random() * 1000000);
+    }
+
+    public toString(): string {
+        const roadAddressStr = this.roadAddress
+            ? `tie: ${this.roadAddress.tie}, ajorata: ${this.roadAddress.ajorata}, osa: ${this.roadAddress.osa}, etaisyys: ${this.roadAddress.etaisyys}, etaisyys_loppu: ${this.roadAddress.etaisyys_loppu}`
+            : 'undefined';
+
+        const LRMStr = `linkId: ${this.LRM.linkId}, mValue: ${this.LRM.mValue}, mValueEnd: ${this.LRM.mValueEnd}`;
+
+        return `LinearAsset(id: ${this.id}, externalIds: [${this.externalIds.join(', ')}], LRM: {${LRMStr}}, roadAddress: {${roadAddressStr}}, digiroadValue:  ${this.digiroadValue ? JSON.stringify(this.digiroadValue) : 'undefined'} , velhoValue: ${this.velhoValue ? JSON.stringify(this.velhoValue) : 'undefined'})`;
+    }
+
+    public toStringNoVellhoInfo(): string {
+        const roadAddressStr = this.roadAddress
+            ? `tie: ${this.roadAddress.tie}, ajorata: ${this.roadAddress.ajorata}, osa: ${this.roadAddress.osa}, etaisyys: ${this.roadAddress.etaisyys}, etaisyys_loppu: ${this.roadAddress.etaisyys_loppu}`
+            : 'undefined';
+
+        const LRMStr = `linkId: ${this.LRM.linkId}, mValue: ${this.LRM.mValue}, mValueEnd: ${this.LRM.mValueEnd}`;
+
+        return `LinearAsset(id: ${this.id}, externalIds: [${this.externalIds.join(', ')}], LRM: {${LRMStr}}, roadAddress: {${roadAddressStr}}, digiroadValue:  ${this.digiroadValue ? JSON.stringify(this.digiroadValue) : 'undefined'})`;
+    }
 }
 
 
@@ -311,14 +355,14 @@ export class LinearAssetHandler extends AssetHandler {
         const assetInLinkIndex: AssetInLinkIndex = {}
         newAssets.forEach(a => {
             a.linkData.forEach(a1 => {
-                const asset = {
+                const asset = new LinearAsset({
                     externalIds: [a.asset.oid],
                     LRM: {linkId:a1.linkId,municipalityCode:a1.municipalityCode,sideCode:a1.sideCode, mValue: a1.mValue, mValueEnd: a1.mValueEnd},
                     roadAddress: {ajorata: a1.roadadress?.ajorata, etaisyys: a1.roadadress?.etaisyys,
                         etaisyys_loppu: a1.roadadress?.etaisyys_loppu, osa: a1.roadadress?.osa, tie: a1.roadadress?.tie},
                     velhoValue: [a.asset],
                     digiroadValue: this.mapVelhoToDR(a.asset)
-                } as LinearAsset
+                } as ILinearAsset )
                 if (assetInLinkIndex[a1.linkId] == undefined || assetInLinkIndex[a1.linkId].size == 0) {
                     const newSet = new Set<LinearAsset>();
                     assetInLinkIndex[a1.linkId] = newSet.add(asset);
@@ -327,22 +371,28 @@ export class LinearAssetHandler extends AssetHandler {
         })
         return assetInLinkIndex
     }
-    private generateNumericId(): number {
-        return Math.floor(Math.random() * 1000000);
-    }
+    
     //TODO create own file when logic start become too large, FillTopology class for example.
     handleLink(assetPerLRM: LinearAsset[],roadLink:RoadLink): LinearAsset[] {
         const steps: ((assets: LinearAsset[],context:LinearAssetHandler) => LinearAsset[])[] = [
+            this.filterValues,
             this.attemptMerge,
             //this.fillLink, // Example - Additional processing step
         ];
+        console.log("BEFORE PROCESSING:"+ roadLink.linkId)
+        assetPerLRM.forEach(a => console.log(a.toStringNoVellhoInfo()))
         const processPipeline = (start: LinearAsset[], steps: ((assets: LinearAsset[],context:LinearAssetHandler) => LinearAsset[])[]) => 
             steps.reduce((acc, step) => step(acc,this), start);
-        
-        return processPipeline(assetPerLRM
-            .sort((a, b) => { return a.LRM.mValue - b.LRM.mValue}), steps);
+        const proceddata = processPipeline(assetPerLRM.sort((a, b) => { return a.LRM.mValue - b.LRM.mValue}), steps)
+
+        console.log("AFTER PROCESSING:"+ roadLink.linkId)
+        proceddata.forEach(a => console.log(a.toStringNoVellhoInfo()))
+        return proceddata;
     }
 
+    filterValues(assets: LinearAsset[],context:LinearAssetHandler): LinearAsset[] {
+        return assets
+    }
      attemptMerge(assets: LinearAsset[],context:LinearAssetHandler): LinearAsset[] {
         const [newAssets, somethingChanged] = context.mergeStep(assets);
         // If no changes were made, return the newAssets.
@@ -353,12 +403,6 @@ export class LinearAssetHandler extends AssetHandler {
     }
   
     mergeStep(assets: LinearAsset[]): [LinearAsset[], boolean] {
-        assets.forEach(asset => {
-            if (!asset.id) { // each merge run generate pseudo id to determinate if part is already merged.
-                asset.id = this.generateNumericId();
-            }
-        });
-        
         let somethingChanged = false;
         const mergedSet = new Set<number>();
         if (assets.length>1) {
@@ -389,13 +433,14 @@ export class LinearAssetHandler extends AssetHandler {
         const {values,shouldWeJoin}= this.getValueAndShouldWeJoin(nextAsset,currentItem)
         if (isNext && shouldWeJoin) {
             if (typeof values !== 'undefined'){
-                return {
+                return  new LinearAsset({
                     externalIds: currentItem.externalIds.concat(nextAsset.externalIds),
                     LRM: {mValue: currentItem.LRM.mValue, mValueEnd: nextAsset.LRM.mValueEnd},
                     roadAddress: {ajorata: 0, etaisyys: 0, etaisyys_loppu: 0, osa: 0, tie: 0},
                     digiroadValue: values,
                     velhoValue: currentItem.velhoValue && nextAsset.velhoValue ? currentItem.velhoValue?.concat(nextAsset.velhoValue) : undefined
-                } as LinearAsset
+                } as ILinearAsset
+            )
             } else return undefined;
         } else return undefined;
     }
@@ -438,7 +483,7 @@ export class LinearAssetHandler extends AssetHandler {
                     VALUES ((SELECT id FROM asset_insert), (SELECT id FROM position_insert));
                 `;
                     await client.query(insertSql, [
-                        assetWithLinkData.externalIds.sort(),
+                        assetWithLinkData.externalIds.sort().join(','),
                         asset_type_id,
                         'Tievelho-import',
                         assetWithLinkData.LRM.municipalityCode,
@@ -480,7 +525,9 @@ export class LinearAssetHandler extends AssetHandler {
              else return null
         }).filter(a=> a !=null) as LinearAsset[]
         
-        await this.saveNewAssets(asset_type_id, assets)
+        
+        
+        //await this.saveNewAssets(asset_type_id, assets)
         //await this.updateAssets(asset_type_id, newAssets)
     }
 }

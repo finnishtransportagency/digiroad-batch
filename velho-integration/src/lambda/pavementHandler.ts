@@ -1,8 +1,7 @@
 import { getClient } from "./utils/AWSUtils";
 import {LinearAsset, LinearAssetHandler, ValueAndJoin} from "./linearAssetHandler";
-import {AssetWithLinkData, VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
+import {VelhoAsset, VelhoLinearAsset} from "./type/velhoAsset";
 import {DRValue} from "./type/type";
-import console from "console";
 
 export enum PavementClass {
     Asphalt = 1, //asfaltti
@@ -24,10 +23,16 @@ export interface VelhoPavementAsset extends VelhoLinearAsset {
     }
 }
 
-export interface PavementValue {
+export interface PavementValue extends DRValue{
     pavement:PavementClass
 }
 
+interface ValueForFilter 
+{id:number, digiroadValue: PavementValue }
+
+function convertToType<T extends DRValue>(p: Partial<DRValue | undefined>): T {
+    return p as unknown as T; // Type assertion to convert DRValue to T
+}
 export class PavementHandler extends LinearAssetHandler {
 
     // the original velho source of each pavement is necessary for correct mappings and filterings
@@ -63,7 +68,7 @@ export class PavementHandler extends LinearAssetHandler {
         return allVelhoAssets.flat();
     }
 
-    filterByPavementTypeAndAddDRProperty = (srcData: VelhoPavementAsset[]): VelhoPavementAsset[] => { // TODO ei tehdä hash index vaan lisätään tämä tieto suoraan
+    filterByPavementType = (srcData: VelhoPavementAsset[]): VelhoPavementAsset[] => {
         const asphaltSources = this.asphaltSources
         const cobblestoneSources = this.cobblestoneSources
         const unboundSources = this.unboundSources
@@ -171,15 +176,49 @@ export class PavementHandler extends LinearAssetHandler {
                 throw new Error('Cannot map value')
         }
     }
+
+    override filterValues(assets: LinearAsset[], context: LinearAssetHandler): LinearAsset[] {
+        function includeList(assetPer: ValueForFilter[]): number[] {
+            if (assetPer.find(a => a.digiroadValue.pavement == PavementClass.Asphalt)) {
+                return assetPer.filter(a => a.digiroadValue.pavement == PavementClass.Asphalt).map(a => a.id)
+            } else if (assetPer.find(a => a.digiroadValue.pavement == PavementClass.Cobblestone)) {
+                return assetPer.filter(a => a.digiroadValue.pavement == PavementClass.Cobblestone).map(a => a.id)
+            } else if (assetPer.find(a => a.digiroadValue.pavement == PavementClass.UnboundWearLayer)) {
+                return assetPer.filter(a => a.digiroadValue.pavement == PavementClass.UnboundWearLayer).map(a => a.id)
+            } else if (assetPer.find(a => a.digiroadValue.pavement == PavementClass.OtherPavementClasses)) {
+                return assetPer.filter(a => a.digiroadValue.pavement == PavementClass.OtherPavementClasses).map(a => a.id)
+            } else {
+                console.log("UNACCOUNTED STATE")
+                return assetPer.map(a => a.id) // testaus mielessä katotaan mitä jää jäljelle
+            }
+        }
+
+        const include = assets.flatMap(a => {
+            const overlap = assets.filter(a1 => a1.LRM.mValue <= a.LRM.mValue || a1.LRM.mValueEnd >= a.LRM.mValueEnd && a1.id != a.id)
+            if (overlap) {
+                const sources = new Set([...overlap.map(a => a.digiroadValue)])
+                console.log("SET: " + JSON.stringify(sources))
+                const overlap2 = overlap.concat(a).map(a => {
+                    if (a.digiroadValue) {
+                        return {
+                            id: a.id,digiroadValue: convertToType<PavementValue>(a.digiroadValue)
+                        } as ValueForFilter
+                    } else return undefined
+                }).filter(a => a != undefined) as ValueForFilter[]
+                return includeList(overlap2)
+            } else return a.id
+        }).filter(a => a != undefined)
+        return assets.filter(a => include.find(a1 => a1 == a.id));
+    }
     
    override getValueAndShouldWeJoin (compare:LinearAsset, currentItem: LinearAsset) {
-        const pavementA = compare.digiroadValue as PavementValue
-        const pavementB = currentItem.digiroadValue as PavementValue
+        const pavementA = convertToType<PavementValue>(compare.digiroadValue)
+        const pavementB = convertToType<PavementValue>(compare.digiroadValue)
         if (JSON.stringify(pavementA.pavement) == JSON.stringify(pavementB.pavement)) {
             return {values:currentItem.digiroadValue,shouldWeJoin: true} as ValueAndJoin
         } else return {values:currentItem.digiroadValue,shouldWeJoin: false } as ValueAndJoin
     }
-
+    
     /**
      * This method performs first the parent class filter. Then it filters the velho assets on main lanes. 
      * If the roadway has lanes to both directions the other side lane (kanu21) is discarded to avoid duplicates
@@ -200,7 +239,7 @@ export class PavementHandler extends LinearAssetHandler {
                 return !s.sijaintitarkenne.kaistat || s.sijaintitarkenne.kaistat.length === 0 || s.sijaintitarkenne.kaistat.some(lane => mainLanes.includes(lane))
             }
         })
-        return this.filterByPavementTypeAndAddDRProperty(necessaryAssets)
+        return this.filterByPavementType(necessaryAssets)
     };
     
     async saveNewAssets(asset_type_id: number, newAssets: LinearAsset[]) {
@@ -243,7 +282,7 @@ export class PavementHandler extends LinearAssetHandler {
             });
             
             const insertPromises = newAssets.map(async (assetWithLinkData) => {
-                const pavementType =(assetWithLinkData.digiroadValue as PavementValue).pavement
+                const pavementType =convertToType<PavementValue>(assetWithLinkData.digiroadValue).pavement
                 const enumeratedValueId = enumeratedValueMap.get(pavementType);
                 if (!enumeratedValueId) {
                     throw new Error(`No enumerated value ID found for value: ${pavementType}`);
@@ -298,10 +337,10 @@ export class PavementHandler extends LinearAssetHandler {
 // this code will compile but might not actually work, need testing.
     async updateAssets(asset_type_id: number, assetsToUpdate: LinearAsset[]) {
 
-        const assetsWithVersioning = assetsToUpdate.filter(a => this.sourcesWithVersioning.includes(this.sourceByOid[a.externalIds]));
+        const assetsWithVersioning = assetsToUpdate.filter(a => this.sourcesWithVersioning.includes(this.sourceByOid[a.externalIds[0]]));
 
         if (assetsWithVersioning.length !== assetsToUpdate.length) {
-            console.log('There were non-versioned assets in assets to update:', assetsToUpdate.filter(atu => !assetsWithVersioning.includes(atu)).map(a => a.asset.oid));
+            console.log('There were non-versioned assets in assets to update:', assetsToUpdate.filter(atu => !assetsWithVersioning.includes(atu)).map(a => a.externalIds[0]));
         }
 
         if (assetsWithVersioning.length === 0) {
@@ -360,7 +399,7 @@ export class PavementHandler extends LinearAssetHandler {
 
 
             const insertPromises = assetsWithVersioning.map(async (assetWithLinkData) => {
-                const pavementType =(assetWithLinkData.digiroadValue as PavementValue).pavement
+                const pavementType =convertToType<PavementValue>(assetWithLinkData.digiroadValue).pavement
                 const enumeratedValueId = enumeratedValueMap.get(pavementType);
                 if (!enumeratedValueId) {
                     throw new Error(`No enumerated value id found for value: ${pavementType}`);

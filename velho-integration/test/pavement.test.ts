@@ -1,4 +1,6 @@
-import { PavementHandler, VelhoPavementAsset, PavementClass } from "../src/lambda/pavementHandler";
+import {PavementClass, PavementHandler, PavementValue, VelhoPavementAsset} from "../src/lambda/pavementHandler";
+import {ILinearAsset, LinearAsset} from "../src/lambda/linearAssetHandler";
+import {DRValue, RoadLink} from "../src/lambda/type/type";
 
 const assetHandler = new PavementHandler();
 
@@ -145,7 +147,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '1': 'muut-pintarakenteet', '2': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Asphalt, PavementClass.Asphalt,
         ]);
@@ -175,7 +177,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '3': 'ladottavat-pintarakenteet', '4': 'ladottavat-pintarakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Cobblestone, PavementClass.Cobblestone,
         ]);
@@ -205,7 +207,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '5': 'muut-pintarakenteet', '6': 'sitomattomat-pintarakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.UnboundWearLayer, PavementClass.UnboundWearLayer,
         ]);
@@ -235,7 +237,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '7': 'muut-pintarakenteet', '8': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.OtherPavementClasses, PavementClass.OtherPavementClasses,
         ]);
@@ -265,7 +267,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '9': 'muut-pintarakenteet', '10': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Unknown, PavementClass.Unknown,
         ]);
@@ -285,7 +287,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '11': 'unknown-source' };
-        expect(() => assetHandler.filterByPavementTypeAndAddDRProperty(srcData)).toThrow('unrecognized pavement source');
+        expect(() => assetHandler.filterByPavementType(srcData)).toThrow('unrecognized pavement source');
     });
 
     test('surfacing 1 is taken, but 2 is ignored', () => {
@@ -312,7 +314,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '12': 'pintaukset', '13': 'pintaukset' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => r.oid)).toEqual(['12'])
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.OtherPavementClasses,
@@ -343,7 +345,7 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '14': 'sidotut-paallysrakenteet', '15': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.map(r => r.oid)).toEqual(['15'])
         expect(result.map(r => assetHandler.pavementByOid[r.oid])).toEqual([
             PavementClass.Unknown,
@@ -374,7 +376,139 @@ describe('filter by pavement type', () => {
             }
         ];
         assetHandler.sourceByOid = { '16': 'sidotut-paallysrakenteet', '17': 'sidotut-paallysrakenteet' };
-        const result = assetHandler.filterByPavementTypeAndAddDRProperty(srcData);
+        const result = assetHandler.filterByPavementType(srcData);
         expect(result.length === 0)
     });
 });
+
+function createRoadLink(options: Partial<RoadLink> = {}): RoadLink {
+    return <RoadLink>{
+        linkId: options.linkId ?? `link-${Math.floor(Math.random() * 1000)}`, // Default random linkId
+        sideCode: options.sideCode ?? 1, // Default side code
+        geometryLength: options.geometryLength ?? 100, // Default geometry length
+        shape: options.shape ?? {coordinates: [[0, 0], [1, 1]]} // Default shape
+    };
+}
+describe('Filter overflapping assets', () => {
+    /*test('materials not listed are ignored', () => {
+        const expectedJoinedAsset3: LinearAsset[] = [
+            new LinearAsset( {
+                externalIds: ['9'],
+                LRM: {
+                    linkId: 'link4',            municipalityCode: 126,
+                    mValue: 0,            mValueEnd: 100
+                },
+                digiroadValue: {pavement:PavementClass.Asphalt} as PavementValue
+            }as ILinearAsset),
+            new LinearAsset(  {
+                externalIds: ['10'],
+                LRM: {
+                    linkId: 'link4',            municipalityCode: 126,
+                    mValue: 30,                mValueEnd: 70
+                },
+                digiroadValue: {pavement:PavementClass.Asphalt} as PavementValue
+            }as ILinearAsset),
+            new LinearAsset(  {
+                externalIds: ['11'],
+                LRM: {
+                    linkId: 'link4',            municipalityCode: 126,
+                    mValue: 70,            mValueEnd: 100
+                },
+                digiroadValue: {pavement:PavementClass.Asphalt} as PavementValue
+            }as ILinearAsset)
+        ];
+        const result  = assetHandler.handleLink(expectedJoinedAsset3,createRoadLink({linkId:'link4',geometryLength:100})).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
+        expect(result.length).toBe(1)
+        expect(result[0].externalIds).toStrictEqual(['9','10','11'])
+        expect(result[0].LRM.mValue).toBe(0)
+        expect(result[0].LRM.mValueEnd).toBe(100)
+        expect(result[0].digiroadValue?.value).toBe("finalValue")
+        console.log('Asset joining assertion passed successfully!');
+    });*/
+
+
+
+    test('Overlap end', () => {
+        const expectedJoinedAsset3: LinearAsset[] = [
+            new LinearAsset( {
+                externalIds: ['9'],
+                LRM: {
+                    linkId: 'link4',      municipalityCode: 126,
+                    mValue: 0,            mValueEnd: 100
+                },
+                digiroadValue: {pavement:PavementClass.Asphalt} as PavementValue
+            } as ILinearAsset),
+            new LinearAsset(  {
+                externalIds: ['11'],
+                LRM: {
+                    linkId: 'link4',       municipalityCode: 126,
+                    mValue: 50,            mValueEnd: 100
+                },
+                digiroadValue: {pavement:PavementClass.Cobblestone} as PavementValue
+            }as ILinearAsset)
+        ];
+        const result  = assetHandler.filterValues(expectedJoinedAsset3, assetHandler).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
+        expect(result.length).toBe(1)
+        expect(result[0].externalIds).toStrictEqual(['9'])
+        expect(result[0].LRM.mValue).toBe(0)
+        expect(result[0].LRM.mValueEnd).toBe(100)
+        expect((result[0].digiroadValue as PavementValue).pavement ).toBe(PavementClass.Asphalt)
+        console.log('Asset joining assertion passed successfully!');
+    });
+
+    test('Overlap starts', () => {
+        const expectedJoinedAsset3: LinearAsset[] = [
+            new LinearAsset( {
+                externalIds: ['9'],
+                LRM: {
+                    linkId: 'link4',      municipalityCode: 126,
+                    mValue: 0,            mValueEnd: 100
+                },
+                digiroadValue: {pavement:PavementClass.Asphalt} as PavementValue
+            } as ILinearAsset),
+            new LinearAsset(  {
+                externalIds: ['11'],
+                LRM: {
+                    linkId: 'link4',       municipalityCode: 126,
+                    mValue: 0,            mValueEnd: 50
+                },
+                digiroadValue: {pavement:PavementClass.Cobblestone} as PavementValue
+            }as ILinearAsset)
+        ];
+        const result  = assetHandler.filterValues(expectedJoinedAsset3, assetHandler).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
+        expect(result.length).toBe(1)
+        expect(result[0].externalIds).toStrictEqual(['9'])
+        expect(result[0].LRM.mValue).toBe(0)
+        expect(result[0].LRM.mValueEnd).toBe(100)
+        expect((result[0].digiroadValue as PavementValue).pavement ).toBe(PavementClass.Asphalt)
+        console.log('Asset joining assertion passed successfully!');
+    });
+
+    test('Overlap in middle', () => {
+        const expectedJoinedAsset3: LinearAsset[] = [
+            new LinearAsset({
+                externalIds: ['9'],
+                LRM: {
+                    linkId: 'link4',      municipalityCode: 126,
+                    mValue: 0,            mValueEnd: 100
+                },
+                digiroadValue: {pavement:PavementClass.Asphalt} as PavementValue
+            } as ILinearAsset),
+            new LinearAsset({
+                externalIds: ['11'],
+                LRM: {
+                    linkId: 'link4',       municipalityCode: 126,
+                    mValue: 30,            mValueEnd: 70
+                },
+                digiroadValue: {pavement:PavementClass.Cobblestone} as PavementValue
+            }as ILinearAsset)
+        ];
+        const result  = assetHandler.filterValues(expectedJoinedAsset3, assetHandler).sort((a, b) => { return a.LRM.mValue - b.LRM.mValue});
+        expect(result.length).toBe(1)
+        expect(result[0].externalIds).toStrictEqual(['9'])
+        expect(result[0].LRM.mValue).toBe(0)
+        expect(result[0].LRM.mValueEnd).toBe(100)
+        expect((result[0].digiroadValue as PavementValue).pavement ).toBe(PavementClass.Asphalt)
+        console.log('Asset joining assertion passed successfully!');
+    });
+})
